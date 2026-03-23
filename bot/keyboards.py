@@ -1,4 +1,8 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    ReplyKeyboardMarkup, KeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardRemove
+)
 from database.db import Session
 from database.models import Region, District, Direction
 
@@ -49,7 +53,6 @@ async def get_directions_keyboard(page: int = 0, per_page: int = 10) -> InlineKe
 
     keyboard = []
     for d in page_directions:
-        # Nom 30 belgidan uzun bo'lsagina qisqartirish
         name = d.name_uz if len(d.name_uz) <= 30 else d.name_uz[:28] + "…"
         keyboard.append([
             InlineKeyboardButton(text=name, callback_data=f"direction_{d.id}")
@@ -63,16 +66,14 @@ async def get_directions_keyboard(page: int = 0, per_page: int = 10) -> InlineKe
     if nav_buttons:
         keyboard.append(nav_buttons)
 
-    keyboard.append([InlineKeyboardButton(text="◀ Orqaga", callback_data="region_back")])
+    keyboard.append([InlineKeyboardButton(text="◀ Orqaga", callback_data="direction_list_back")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 async def get_phone_keyboard() -> ReplyKeyboardMarkup:
+    """Faqat telefon tugmasi — bekor qil yo'q"""
     return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📱 Telefon raqamni yubor", request_contact=True)],
-            [KeyboardButton(text="❌ Bekor qil")]
-        ],
+        keyboard=[[KeyboardButton(text="📱 Telefon raqamni ulash", request_contact=True)]],
         resize_keyboard=True,
         one_time_keyboard=True
     )
@@ -83,8 +84,7 @@ async def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="🧪 Testni boshlash")],
             [KeyboardButton(text="📊 Natijalarim"), KeyboardButton(text="🏆 Reyting")],
-            [KeyboardButton(text="👤 Profilim"), KeyboardButton(text="⚙️ Sozlamalar")],
-            [KeyboardButton(text="❓ Yordam")]
+            [KeyboardButton(text="👤 Profilim"), KeyboardButton(text="❓ Yordam")]
         ],
         resize_keyboard=True
     )
@@ -121,3 +121,12 @@ def get_test_results_keyboard() -> ReplyKeyboardMarkup:
         ],
         resize_keyboard=True
     )
+
+
+def get_profile_settings_keyboard() -> InlineKeyboardMarkup:
+    """Profil sozlamalari tugmalari"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ F.I.SH ni tahrirlash", callback_data="profile_edit_name")],
+        [InlineKeyboardButton(text="📚 Yo'nalishni o'zgartirish", callback_data="profile_edit_direction")],
+        [InlineKeyboardButton(text="◀ Orqaga", callback_data="profile_back")]
+    ])
