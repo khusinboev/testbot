@@ -1,9 +1,6 @@
 """
 admin/routes_extra.py
 Kanallar va broadcast uchun qo'shimcha routelar.
-Bu faylni admin/app.py ga import qiling:
-    from admin.routes_extra import register_extra_routes
-    register_extra_routes(app)
 """
 import asyncio
 import logging
@@ -15,9 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 def register_extra_routes(app):
-    """app.py ga import qilib chaqiriladi."""
 
-    # ── Kanallar sahifasi ──────────────────────────────────────────────────
+    # ── Kanallar ──────────────────────────────────────────────────
 
     @app.route('/channels')
     @login_required
@@ -52,8 +48,7 @@ def register_extra_routes(app):
                 MandatoryChannel.channel_id == channel_id
             ).first()
             if existing:
-                return jsonify({'success': False, 'error': 'Bu kanal allaqachon qo\'shilgan'})
-
+                return jsonify({'success': False, 'error': "Bu kanal allaqachon qo'shilgan"})
             db.add(MandatoryChannel(
                 channel_id=channel_id,
                 channel_name=channel_name,
@@ -104,13 +99,13 @@ def register_extra_routes(app):
         finally:
             db.close()
 
-    # ── Broadcast sahifasi ──────────────────────────────────────────────────
+    # ── Broadcast ──────────────────────────────────────────────────
 
     @app.route('/broadcast')
     @login_required
     def broadcast():
         from database.db import Session
-        from database.models import User, BroadcastMessage
+        from database.models import User, BroadcastMessage, Score
         from sqlalchemy import func, desc
         db = Session()
         try:
@@ -135,30 +130,28 @@ def register_extra_routes(app):
     @login_required
     def api_broadcast_send():
         from database.db import Session
-        from database.models import BroadcastMessage, User
-        from sqlalchemy import func
+        from database.models import BroadcastMessage, User, Score
+        from sqlalchemy import func, desc
         import threading
 
         data = request.get_json() or {}
-        message_type         = data.get('message_type', 'text')
-        content              = data.get('content', '').strip() or None
-        forward_from_chat    = data.get('forward_from_chat', '').strip() or None
-        forward_message_id   = data.get('forward_message_id')
-        target               = data.get('target', 'all')
+        message_type       = data.get('message_type', 'text')
+        content            = data.get('content', '').strip() or None
+        forward_from_chat  = data.get('forward_from_chat', '').strip() or None
+        forward_message_id = data.get('forward_message_id')
+        target             = data.get('target', 'all')   # 'all' | 'active' | 'top_N'
+        top_n              = data.get('top_n')            # int yoki None
 
         if message_type == 'text' and not content:
-            return jsonify({'success': False, 'error': 'Xabar matni bo\'sh'})
+            return jsonify({'success': False, 'error': "Xabar matni bo'sh"})
         if message_type == 'forward' and not (forward_from_chat and forward_message_id):
-            return jsonify({'success': False, 'error': 'Post ma\'lumotlari to\'liq emas'})
+            return jsonify({'success': False, 'error': "Post ma'lumotlari to'liq emas"})
 
         db = Session()
         try:
-            # User count
-            q = db.query(User)
-            if target == 'active':
-                month_ago = datetime.utcnow() - timedelta(days=30)
-                q = q.filter(User.created_at >= month_ago)
-            total = q.count()
+            # User IDlarini darhol DB dan olib yopamiz
+            user_ids = _get_target_user_ids(db, target, top_n)
+            total = len(user_ids)
 
             broadcast = BroadcastMessage(
                 message_type=message_type,
@@ -171,121 +164,171 @@ def register_extra_routes(app):
             db.add(broadcast)
             db.commit()
             broadcast_id = broadcast.id
-            db.close()
-
-            # Background thread da yuborish
-            thread = threading.Thread(
-                target=_run_broadcast,
-                args=(broadcast_id, message_type, content,
-                      forward_from_chat, forward_message_id, target),
-                daemon=True
-            )
-            thread.start()
-
-            return jsonify({'success': True, 'broadcast_id': broadcast_id, 'total': total})
         except Exception as e:
             db.rollback()
             return jsonify({'success': False, 'error': str(e)})
+        finally:
+            db.close()
 
-    def _run_broadcast(broadcast_id, message_type, content,
-                       forward_chat, forward_msg_id, target):
-        """Background da broadcast yuborish."""
-        import time
+        # Background thread — faqat oddiy ma'lumotlar uzatiladi (ORM ob'ektlar emas!)
+        thread = threading.Thread(
+            target=_run_broadcast,
+            args=(broadcast_id, message_type, content,
+                  forward_from_chat, forward_message_id, user_ids),
+            daemon=True
+        )
+        thread.start()
+
+        return jsonify({'success': True, 'broadcast_id': broadcast_id, 'total': total})
+
+
+def _get_target_user_ids(db, target: str, top_n) -> list:
+    """
+    Maqsadli foydalanuvchilarning telegram_id larini qaytaradi.
+    Bu funksiya ochiq DB sessiyasi bilan chaqiriladi.
+    """
+    from database.models import User, Score
+    from sqlalchemy import func, desc
+
+    if target == 'all':
+        rows = db.query(User.telegram_id).filter(
+            User.is_blocked.is_(False)
+        ).all()
+
+    elif target == 'active':
+        month_ago = datetime.utcnow() - timedelta(days=30)
+        rows = db.query(User.telegram_id).filter(
+            User.created_at >= month_ago,
+            User.is_blocked.is_(False)
+        ).all()
+
+    elif target == 'top_n':
+        # Eng ko'p test topshirganlar (test_count bo'yicha)
         try:
-            import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(
-                _async_broadcast(broadcast_id, message_type, content,
-                                 forward_chat, forward_msg_id, target)
-            )
-        except Exception as e:
-            logger.error("Broadcast thread xato: %s", e)
-            _set_broadcast_status(broadcast_id, 'failed')
+            n = int(top_n) if top_n else 100
+            n = max(1, min(n, 100_000))  # 1..100_000 oralig'ida cheklash
+        except (TypeError, ValueError):
+            n = 100
 
-    async def _async_broadcast(broadcast_id, message_type, content,
-                                forward_chat, forward_msg_id, target):
-        import os
-        from database.db import Session
-        from database.models import User, BroadcastMessage
-        from datetime import timedelta
-        from aiogram import Bot
-        from aiogram.client.default import DefaultBotProperties
-        from aiogram.enums import ParseMode
+        # Score soniga ko'ra saralash — har bir user uchun score_count
+        subq = (
+            db.query(Score.user_id, func.count(Score.id).label('cnt'))
+            .group_by(Score.user_id)
+            .order_by(desc('cnt'))
+            .limit(n)
+            .subquery()
+        )
+        rows = (
+            db.query(User.telegram_id)
+            .join(subq, User.id == subq.c.user_id)
+            .filter(User.is_blocked.is_(False))
+            .all()
+        )
+    else:
+        rows = db.query(User.telegram_id).filter(
+            User.is_blocked.is_(False)
+        ).all()
 
-        BOT_TOKEN = os.getenv('BOT_TOKEN')
-        bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    return [r[0] for r in rows]
 
-        db = Session()
-        q = db.query(User)
-        if target == 'active':
-            month_ago = datetime.utcnow() - timedelta(days=30)
-            q = q.filter(User.created_at >= month_ago)
-        users = q.all()
 
-        # Status: sending
+def _run_broadcast(broadcast_id, message_type, content,
+                   forward_chat, forward_msg_id, telegram_ids: list):
+    """Background threadda broadcast yuborish."""
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(
+            _async_broadcast(broadcast_id, message_type, content,
+                             forward_chat, forward_msg_id, telegram_ids)
+        )
+    except Exception as e:
+        logger.error("Broadcast thread xato: %s", e)
+        _set_broadcast_status(broadcast_id, 'failed')
+    finally:
+        loop.close()
+
+
+async def _async_broadcast(broadcast_id, message_type, content,
+                            forward_chat, forward_msg_id, telegram_ids: list):
+    """
+    telegram_ids — oddiy int ro'yxati (ORM ob'ektlar emas!).
+    Shu sababli Session is not bound xatosi chiqmaydi.
+    """
+    import os
+    from database.db import Session
+    from database.models import BroadcastMessage
+    from aiogram import Bot
+    from aiogram.client.default import DefaultBotProperties
+    from aiogram.enums import ParseMode
+
+    BOT_TOKEN = os.getenv('BOT_TOKEN')
+    bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+
+    # Status: sending
+    db = Session()
+    try:
         bcast = db.query(BroadcastMessage).filter(
             BroadcastMessage.id == broadcast_id
         ).first()
         if bcast:
             bcast.status = 'sending'
             db.commit()
+    finally:
         db.close()
 
-        sent = 0
-        fail = 0
+    sent = 0
+    fail = 0
 
-        for user in users:
-            try:
-                if message_type == 'text':
-                    await bot.send_message(user.telegram_id, content, parse_mode='HTML')
-                else:
-                    # Forward
-                    await bot.forward_message(
-                        chat_id=user.telegram_id,
-                        from_chat_id=forward_chat,
-                        message_id=int(forward_msg_id)
-                    )
-                sent += 1
-            except Exception as e:
-                fail += 1
-                logger.debug("Broadcast user %d xato: %s", user.telegram_id, e)
-
-            # Flood limit: Telegram 30 msg/sec ruxsat beradi
-            if (sent + fail) % 25 == 0:
-                await asyncio.sleep(1)
-
-        # Yakunlash
-        db2 = Session()
+    for tg_id in telegram_ids:
         try:
-            b = db2.query(BroadcastMessage).filter(
-                BroadcastMessage.id == broadcast_id
-            ).first()
-            if b:
-                b.sent_count  = sent
-                b.fail_count  = fail
-                b.status      = 'done'
-                b.finished_at = datetime.utcnow()
-                db2.commit()
-        finally:
-            db2.close()
+            if message_type == 'text':
+                await bot.send_message(tg_id, content, parse_mode='HTML')
+            else:
+                await bot.forward_message(
+                    chat_id=tg_id,
+                    from_chat_id=forward_chat,
+                    message_id=int(forward_msg_id)
+                )
+            sent += 1
+        except Exception as e:
+            fail += 1
+            logger.debug("Broadcast user %d xato: %s", tg_id, e)
 
-        await bot.session.close()
-        logger.info(
-            "Broadcast #%d yakunlandi: %d yuborildi, %d xato",
-            broadcast_id, sent, fail
-        )
+        # Flood limit: 30 msg/sec
+        if (sent + fail) % 25 == 0:
+            await asyncio.sleep(1)
 
-    def _set_broadcast_status(broadcast_id, status):
-        from database.db import Session
-        from database.models import BroadcastMessage
-        db = Session()
-        try:
-            b = db.query(BroadcastMessage).filter(
-                BroadcastMessage.id == broadcast_id
-            ).first()
-            if b:
-                b.status = status
-                db.commit()
-        finally:
-            db.close()
+    # Yakunlash
+    db2 = Session()
+    try:
+        b = db2.query(BroadcastMessage).filter(
+            BroadcastMessage.id == broadcast_id
+        ).first()
+        if b:
+            b.sent_count  = sent
+            b.fail_count  = fail
+            b.status      = 'done'
+            b.finished_at = datetime.utcnow()
+            db2.commit()
+    finally:
+        db2.close()
+
+    await bot.session.close()
+    logger.info("Broadcast #%d yakunlandi: %d yuborildi, %d xato",
+                broadcast_id, sent, fail)
+
+
+def _set_broadcast_status(broadcast_id, status):
+    from database.db import Session
+    from database.models import BroadcastMessage
+    db = Session()
+    try:
+        b = db.query(BroadcastMessage).filter(
+            BroadcastMessage.id == broadcast_id
+        ).first()
+        if b:
+            b.status = status
+            db.commit()
+    finally:
+        db.close()

@@ -11,30 +11,63 @@
     display: flex; align-items: flex-start; gap: 12px;
   }
   .type-card:hover { border-color: var(--accent); background: rgba(79,110,247,.05); }
-  .type-card.selected {
-    border-color: var(--accent);
-    background: rgba(79,110,247,.1);
-  }
+  .type-card.selected { border-color: var(--accent); background: rgba(79,110,247,.1); }
   .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
   .type-icon { font-size: 24px; }
   .type-title { font-size: 13px; font-weight: 700; }
   .type-desc  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
   .preview-box {
     background: var(--surface2); border: 1px solid var(--border);
     border-radius: 10px; padding: 14px; font-size:13px;
     margin-bottom: 20px; min-height: 60px; color: var(--muted);
   }
-  .stats-row {
-    display: flex; gap: 20px; flex-wrap: wrap;
-    margin-bottom: 24px;
-  }
+  .stats-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
   .stat-mini {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 16px;
-    font-size: 13px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 16px; font-size: 13px;
   }
   .stat-mini b { color: var(--accent); }
+
+  /* Target kartochkalar */
+  .target-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 16px; }
+  .target-card {
+    border: 1.5px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; cursor: pointer; transition: all .15s;
+    text-align: center;
+  }
+  .target-card:hover { border-color: var(--accent); background: rgba(79,110,247,.05); }
+  .target-card.selected { border-color: var(--accent); background: rgba(79,110,247,.12); }
+  .target-card .t-icon { font-size: 20px; margin-bottom: 4px; }
+  .target-card .t-title { font-size: 12px; font-weight: 700; }
+  .target-card .t-count { font-size: 11px; color: var(--accent); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+
+  .top-n-wrap {
+    display: none;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;
+  }
+  .top-n-wrap.visible { display: block; }
+  .top-n-label { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 8px; }
+  .top-n-row { display: flex; gap: 8px; align-items: center; }
+  .top-n-row input {
+    width: 100px; padding: 8px 12px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text);
+    font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700;
+  }
+  .top-n-row input:focus { outline: none; border-color: var(--accent); }
+  .top-n-hint { font-size: 11px; color: var(--muted); }
+
+  .target-summary {
+    background: rgba(79,110,247,.08); border: 1px solid rgba(79,110,247,.2);
+    border-radius: 8px; padding: 10px 14px; font-size: 12px;
+    color: var(--accent); margin-bottom: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    display: none;
+  }
+  .target-summary.visible { display: block; }
+
   .history-status-sending { color: var(--warning); }
   .history-status-done    { color: var(--success); }
   .history-status-failed  { color: var(--danger); }
@@ -44,9 +77,8 @@
 
 {% block content %}
 
-<!-- Stats -->
 <div class="stats-row">
-  <div class="stat-mini">👥 Jami userlar: <b>{{ total_users }}</b></div>
+  <div class="stat-mini">👥 Jami: <b>{{ total_users }}</b></div>
   <div class="stat-mini">✅ Faol (30 kun): <b>{{ active_users }}</b></div>
 </div>
 
@@ -54,86 +86,106 @@
 
   <!-- Form -->
   <div class="card">
-    <div class="card-header">
-      <span class="card-title">📣 Yangi xabar yuborish</span>
-    </div>
+    <div class="card-header"><span class="card-title">📣 Yangi xabar yuborish</span></div>
     <div class="card-body">
 
       <!-- Xabar turi -->
-      <div style="font-size:11px;font-weight:700;letter-spacing:.8px;
-                  text-transform:uppercase;color:var(--muted);margin-bottom:10px">
-        Xabar turi
-      </div>
+      <div class="form-label" style="letter-spacing:.8px;text-transform:uppercase">Xabar turi</div>
       <div class="type-grid">
         <div class="type-card selected" id="typeText" onclick="selectType('text')">
           <div class="type-icon">✏️</div>
           <div>
             <div class="type-title">Matnli xabar</div>
-            <div class="type-desc">Bot o'zi nomidan yuboradi<br>HTML formatlash qo'llab-quvvatlanadi</div>
+            <div class="type-desc">HTML formatlash qo'llab-quvvatlanadi</div>
           </div>
         </div>
         <div class="type-card" id="typeForward" onclick="selectType('forward')">
           <div class="type-icon">↩️</div>
           <div>
             <div class="type-title">Post uzatish</div>
-            <div class="type-desc">Kanaldan post havolasi<br>Manba ko'rinadi</div>
+            <div class="type-desc">Kanaldan post havolasi</div>
           </div>
         </div>
       </div>
 
-      <!-- Matnli xabar uchun maydon -->
+      <!-- Matnli xabar -->
       <div id="fieldText">
         <div class="form-group">
-          <label class="form-label">Xabar matni (HTML qo'llab-quvvatlanadi)</label>
+          <label class="form-label">Xabar matni</label>
           <textarea class="form-control" id="msgText" rows="6"
-                    placeholder="Assalomu alaykum!&#10;&#10;Yangi test &lt;b&gt;03.04.2025&lt;/b&gt; da bo'ladi.&#10;&#10;#dtm #test"
+                    placeholder="Assalomu alaykum!&#10;&#10;Yangi test <b>03.04.2025</b> da bo'ladi."
                     oninput="updatePreview()"></textarea>
           <div class="text-muted text-xs mt-1">
-            &lt;b&gt;bold&lt;/b&gt;, &lt;i&gt;italic&lt;/i&gt;, &lt;code&gt;code&lt;/code&gt;, \n = yangi qator
+            &lt;b&gt;bold&lt;/b&gt;, &lt;i&gt;italic&lt;/i&gt;, &lt;code&gt;code&lt;/code&gt;
           </div>
         </div>
       </div>
 
-      <!-- Post uzatish uchun maydon -->
+      <!-- Post uzatish -->
       <div id="fieldForward" style="display:none">
         <div class="form-group">
-          <label class="form-label">Post havolasi (kanaldan nusxa oling)</label>
+          <label class="form-label">Post havolasi</label>
           <input type="text" class="form-control" id="forwardLink"
                  placeholder="https://t.me/kanal_nomi/123"
                  oninput="parseForwardLink()">
-          <div class="text-muted text-xs mt-1">
-            Postni Telegram da oching → "Havolani nusxalash" → shu yerga joylashtiring
-          </div>
         </div>
         <div id="forwardParsed" style="display:none">
-          <div class="form-group">
-            <label class="form-label">Kanal username</label>
-            <input type="text" class="form-control" id="forwardChat" readonly>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Post ID</label>
-            <input type="text" class="form-control" id="forwardMsgId" readonly>
+          <div class="grid-2" style="gap:10px">
+            <div class="form-group">
+              <label class="form-label">Kanal username</label>
+              <input type="text" class="form-control" id="forwardChat" readonly>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Post ID</label>
+              <input type="text" class="form-control" id="forwardMsgId" readonly>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Oldindan ko'rish -->
-      <div style="font-size:11px;font-weight:700;letter-spacing:.8px;
-                  text-transform:uppercase;color:var(--muted);margin-bottom:8px">
+      <!-- Preview -->
+      <div class="form-label" style="letter-spacing:.8px;text-transform:uppercase;margin-bottom:8px">
         Oldindan ko'rish
       </div>
       <div class="preview-box" id="msgPreview">
-        <span style="color:var(--muted);font-style:italic">Xabar matni bu yerda ko'rinadi...</span>
+        <span style="font-style:italic">Xabar matni bu yerda ko'rinadi...</span>
       </div>
 
-      <!-- Kimga yuborish -->
-      <div class="form-group">
-        <label class="form-label">Kimga yuborish</label>
-        <select class="form-control" id="targetSelect">
-          <option value="all">Barcha foydalanuvchilar ({{ total_users }} ta)</option>
-          <option value="active">So'nggi 30 kunda faollar ({{ active_users }} ta)</option>
-        </select>
+      <!-- ═══ Kimga yuborish ═══ -->
+      <div class="form-label" style="letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px">
+        Kimga yuborish
       </div>
+
+      <div class="target-grid">
+        <div class="target-card selected" id="tAll" onclick="selectTarget('all')">
+          <div class="t-icon">👥</div>
+          <div class="t-title">Barchaga</div>
+          <div class="t-count">{{ total_users }} ta</div>
+        </div>
+        <div class="target-card" id="tActive" onclick="selectTarget('active')">
+          <div class="t-icon">✅</div>
+          <div class="t-title">Faollar</div>
+          <div class="t-count">{{ active_users }} ta</div>
+        </div>
+        <div class="target-card" id="tTopN" onclick="selectTarget('top_n')">
+          <div class="t-icon">🏆</div>
+          <div class="t-title">Top N faol</div>
+          <div class="t-count">raqam kir.</div>
+        </div>
+      </div>
+
+      <!-- Top N soni -->
+      <div class="top-n-wrap" id="topNWrap">
+        <div class="top-n-label">📊 Eng ko'p test topshirganlar soni:</div>
+        <div class="top-n-row">
+          <input type="number" id="topNInput" value="100" min="1" max="100000"
+                 oninput="updateTargetSummary()">
+          <span class="top-n-hint">ta foydalanuvchi (test soni bo'yicha saralangan)</span>
+        </div>
+      </div>
+
+      <!-- Target xulosa -->
+      <div class="target-summary" id="targetSummary"></div>
 
       <div id="broadcastResult" style="display:none;margin-bottom:12px"></div>
 
@@ -144,7 +196,7 @@
     </div>
   </div>
 
-  <!-- Yuborish tarixi -->
+  <!-- Tarix -->
   <div class="card">
     <div class="card-header">
       <span class="card-title">📋 Yuborish tarixi</span>
@@ -154,11 +206,7 @@
       <table>
         <thead>
           <tr>
-            <th>Tur</th>
-            <th>Mazmun</th>
-            <th>Yuborildi</th>
-            <th>Holat</th>
-            <th>Sana</th>
+            <th>Tur</th><th>Mazmun</th><th>Yuborildi</th><th>Holat</th><th>Sana</th>
           </tr>
         </thead>
         <tbody>
@@ -173,16 +221,14 @@
             </td>
             <td class="text-sm" style="max-width:180px">
               {% if b.message_type == 'forward' %}
-              <span class="text-muted">@{{ b.forward_from_chat }}/{{ b.forward_message_id }}</span>
+              <span class="text-muted font-mono text-xs">{{ b.forward_from_chat }}/{{ b.forward_message_id }}</span>
               {% else %}
-              <span class="truncate" style="max-width:180px" title="{{ b.content }}">
+              <span class="truncate" title="{{ b.content }}">
                 {{ (b.content or '')[:40] }}{% if b.content and b.content|length > 40 %}…{% endif %}
               </span>
               {% endif %}
             </td>
-            <td class="font-mono text-sm">
-              {{ b.sent_count }} / {{ b.sent_count + b.fail_count }}
-            </td>
+            <td class="font-mono text-sm">{{ b.sent_count }}/{{ b.sent_count + b.fail_count }}</td>
             <td>
               <span class="history-status-{{ b.status }}">
                 {% if b.status == 'done' %}✅ Yuborildi
@@ -210,13 +256,18 @@
 
 {% block scripts %}
 <script>
-let currentType = 'text';
+let currentType   = 'text';
+let currentTarget = 'all';
 
+const TOTAL_USERS  = {{ total_users }};
+const ACTIVE_USERS = {{ active_users }};
+
+// ── Xabar turi ───────────────────────────────────────────
 function selectType(type) {
   currentType = type;
   document.getElementById('typeText').classList.toggle('selected', type === 'text');
   document.getElementById('typeForward').classList.toggle('selected', type === 'forward');
-  document.getElementById('fieldText').style.display    = type === 'text' ? 'block' : 'none';
+  document.getElementById('fieldText').style.display    = type === 'text'    ? 'block' : 'none';
   document.getElementById('fieldForward').style.display = type === 'forward' ? 'block' : 'none';
   updatePreview();
 }
@@ -226,36 +277,29 @@ function updatePreview() {
   if (currentType === 'text') {
     const text = document.getElementById('msgText').value;
     if (!text) {
-      box.innerHTML = '<span style="color:var(--muted);font-style:italic">Xabar matni bu yerda ko\'rinadi...</span>';
+      box.innerHTML = '<span style="font-style:italic;color:var(--muted)">Xabar matni bu yerda ko\'rinadi...</span>';
     } else {
-      // Oddiy preview (HTML teglarini ko'rsatmaslik uchun escaped)
       box.innerHTML = text
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/\n/g, '<br>')
-        // HTML formatting preview
-        .replace(/&lt;b&gt;(.*?)&lt;\/b&gt;/g, '<b>$1</b>')
-        .replace(/&lt;i&gt;(.*?)&lt;\/i&gt;/g, '<i>$1</i>')
-        .replace(/&lt;code&gt;(.*?)&lt;\/code&gt;/g, '<code style="background:rgba(79,110,247,.15);padding:1px 4px;border-radius:4px">$1</code>');
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/\n/g,'<br>')
+        .replace(/&lt;b&gt;(.*?)&lt;\/b&gt;/g,'<b>$1</b>')
+        .replace(/&lt;i&gt;(.*?)&lt;\/i&gt;/g,'<i>$1</i>')
+        .replace(/&lt;code&gt;(.*?)&lt;\/code&gt;/g,'<code style="background:rgba(79,110,247,.15);padding:1px 4px;border-radius:4px">$1</code>');
     }
   } else {
     const link = document.getElementById('forwardLink').value;
-    if (!link) {
-      box.innerHTML = '<span style="color:var(--muted);font-style:italic">Post havolasini kiriting...</span>';
-    } else {
-      box.innerHTML = `<span style="color:var(--accent)">↩️ Kanal posti uzatiladi</span><br><span class="text-muted text-xs">${link}</span>`;
-    }
+    box.innerHTML = link
+      ? `<span style="color:var(--accent)">↩️ Kanal posti uzatiladi</span><br><span class="text-muted text-xs">${link}</span>`
+      : '<span style="font-style:italic;color:var(--muted)">Post havolasini kiriting...</span>';
   }
 }
 
 function parseForwardLink() {
-  const link = document.getElementById('forwardLink').value.trim();
+  const link   = document.getElementById('forwardLink').value.trim();
   const parsed = document.getElementById('forwardParsed');
   updatePreview();
-
-  // https://t.me/kanal/123  yoki https://t.me/c/1234567890/123
   const m1 = link.match(/t\.me\/([^/]+)\/(\d+)/);
   const m2 = link.match(/t\.me\/c\/(\d+)\/(\d+)/);
-
   if (m1) {
     document.getElementById('forwardChat').value  = '@' + m1[1];
     document.getElementById('forwardMsgId').value = m1[2];
@@ -269,12 +313,45 @@ function parseForwardLink() {
   }
 }
 
+// ── Kimga yuborish ────────────────────────────────────────
+function selectTarget(t) {
+  currentTarget = t;
+  ['tAll','tActive','tTopN'].forEach(id =>
+    document.getElementById(id).classList.remove('selected')
+  );
+  const idMap = { all:'tAll', active:'tActive', top_n:'tTopN' };
+  document.getElementById(idMap[t]).classList.add('selected');
+
+  const topNWrap = document.getElementById('topNWrap');
+  topNWrap.classList.toggle('visible', t === 'top_n');
+
+  updateTargetSummary();
+}
+
+function updateTargetSummary() {
+  const box = document.getElementById('targetSummary');
+  if (currentTarget === 'all') {
+    box.textContent = `👥 Barcha foydalanuvchilar — ${TOTAL_USERS} ta`;
+    box.classList.add('visible');
+  } else if (currentTarget === 'active') {
+    box.textContent = `✅ So'nggi 30 kunda faollar — ${ACTIVE_USERS} ta`;
+    box.classList.add('visible');
+  } else {
+    const n = parseInt(document.getElementById('topNInput').value) || 100;
+    box.textContent = `🏆 Eng ko'p test topshirgan ${n} ta foydalanuvchi`;
+    box.classList.add('visible');
+  }
+}
+
+// Sahifa ochilganda summary ko'rsatish
+updateTargetSummary();
+
+// ── Yuborish ──────────────────────────────────────────────
 async function sendBroadcast() {
   const btn    = document.getElementById('sendBtn');
   const result = document.getElementById('broadcastResult');
-  const target = document.getElementById('targetSelect').value;
 
-  let payload = { message_type: currentType, target };
+  let payload = { message_type: currentType, target: currentTarget };
 
   if (currentType === 'text') {
     const text = document.getElementById('msgText').value.trim();
@@ -283,15 +360,27 @@ async function sendBroadcast() {
   } else {
     const chat   = document.getElementById('forwardChat').value.trim();
     const msg_id = document.getElementById('forwardMsgId').value.trim();
-    if (!chat || !msg_id) { alert('Post havolasini to\'g\'ri kiriting!'); return; }
-    payload.forward_from_chat    = chat;
-    payload.forward_message_id   = parseInt(msg_id);
+    if (!chat || !msg_id) { alert("Post havolasini to'g'ri kiriting!"); return; }
+    payload.forward_from_chat  = chat;
+    payload.forward_message_id = parseInt(msg_id);
   }
 
-  if (!confirm(`Xabar ${target === 'all' ? 'barcha' : 'faol'} userlarga yuboriladimi?`)) return;
+  if (currentTarget === 'top_n') {
+    const n = parseInt(document.getElementById('topNInput').value);
+    if (!n || n < 1) { alert("Top N uchun musbat son kiriting!"); return; }
+    payload.top_n = n;
+  }
 
-  btn.innerHTML  = '⏳ Yuborilmoqda...';
-  btn.disabled   = true;
+  // Tasdiqlash matni
+  let targetLabel = '';
+  if (currentTarget === 'all')    targetLabel = `barcha ${TOTAL_USERS} ta`;
+  else if (currentTarget === 'active') targetLabel = `faol ${ACTIVE_USERS} ta`;
+  else targetLabel = `top ${payload.top_n} ta faol`;
+
+  if (!confirm(`Xabar ${targetLabel} foydalanuvchiga yuboriladimi?`)) return;
+
+  btn.innerHTML = '⏳ Yuborilmoqda...';
+  btn.disabled  = true;
   result.style.display = 'block';
   result.innerHTML = '<div class="alert alert-info">⏳ Xabar navbatga qo\'yildi...</div>';
 
@@ -304,8 +393,8 @@ async function sendBroadcast() {
     const d = await r.json();
     if (d.success) {
       result.innerHTML = `<div class="alert alert-success">
-        ✅ Yuborish boshlandi! ID: #${d.broadcast_id}<br>
-        <span class="text-xs">${d.total} ta userlarga navbatma-navbat yuboriladi.</span>
+        ✅ Yuborish boshlandi! ID: <b>#${d.broadcast_id}</b><br>
+        <span class="text-xs">${d.total} ta foydalanuvchiga navbatma-navbat yuboriladi.</span>
       </div>`;
       setTimeout(() => location.reload(), 3000);
     } else {
