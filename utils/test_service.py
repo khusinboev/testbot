@@ -6,6 +6,7 @@ from database.models import (
 )
 from sqlalchemy import func
 import config
+import random
 
 
 class TestService:
@@ -58,12 +59,9 @@ class TestService:
         )
         db.add(participation)
         db.commit()
-        # scalar maydonlar yopilgandan keyin ham ishlaydi
         p_id = participation.id
-        ts_id = participation.test_session_id
         db.close()
 
-        # Qayta olamiz — handlerda .test_session_id kerak bo'ladi
         db2 = Session()
         result = db2.query(UserTestParticipation).filter(UserTestParticipation.id == p_id).first()
         db2.close()
@@ -71,33 +69,116 @@ class TestService:
 
     @staticmethod
     def get_test_questions(direction_id: str) -> list:
+        """
+        Savollarni qat'iy tartibda qaytaradi:
+          Guruh 1 — Majburiy: Matematika   (10 ta)
+          Guruh 2 — Majburiy: Ona tili     (10 ta)
+          Guruh 3 — Majburiy: Tarix        (10 ta)
+          Guruh 4 — Asosiy 1-fan           (30 ta)
+          Guruh 5 — Asosiy 2-fan           (30 ta)
+
+        Har guruh ichida savollar va variantlar RANDOM aralashtiriladi.
+        Guruhlar tartibi O'ZGARMAS.
+        """
         db = Session()
         direction = db.query(Direction).filter(Direction.id == direction_id).first()
         if not direction:
             db.close()
             return []
 
-        questions = []
-
-        # Majburiy fanlar: Matematika (1), Tarix (5), Ona tili (6)
-        for subject_id in [1, 5, 6]:
-            qs = db.query(Question).filter(
-                Question.subject_id == subject_id
-            ).limit(config.MANDATORY_QUESTIONS_PER_SUBJECT).all()
-            questions.extend(qs)
-
-        # Ixtisoslashgan fanlar: yo'nalishning 2 ta fani, har biridan 30 ta
-        for subject_id in [direction.subject1_id, direction.subject2_id]:
-            qs = db.query(Question).filter(
-                Question.subject_id == subject_id
-            ).limit(config.SPECIALIZED_QUESTIONS_PER_SUBJECT).all()
-            questions.extend(qs)
-
+        subj1_id   = direction.subject1_id
+        subj2_id   = direction.subject2_id
+        subj1_name = direction.subject1.name_uz if direction.subject1 else f"Fan-{subj1_id}"
+        subj2_name = direction.subject2.name_uz if direction.subject2 else f"Fan-{subj2_id}"
         db.close()
 
-        import random
-        random.shuffle(questions)
-        return questions[:90]
+        def _fetch_shuffled(subject_id: int, count: int) -> list:
+            """Berilgan fandan `count` ta savol oladi va tartibini aralashtiradi."""
+            db2 = Session()
+            rows = db2.query(Question).filter(
+                Question.subject_id == subject_id
+            ).all()
+            db2.close()
+
+            # Savollar to'plamini aralashtirish
+            random.shuffle(rows)
+            selected = rows[:count]
+
+            # Har bir savol uchun variantlarni ham aralashtirish
+            result = []
+            for q in selected:
+                options = [
+                    ('A', q.option_a),
+                    ('B', q.option_b),
+                    ('C', q.option_c),
+                    ('D', q.option_d),
+                ]
+                # To'g'ri javob harfi va matnini eslash
+                correct_text = {
+                    'A': q.option_a,
+                    'B': q.option_b,
+                    'C': q.option_c,
+                    'D': q.option_d,
+                }.get(q.correct_answer, q.option_a)
+
+                random.shuffle(options)
+
+                # Yangi variant harflarini belgilash
+                new_correct = None
+                for new_letter, (orig_letter, text) in zip(['A', 'B', 'C', 'D'], options):
+                    if text == correct_text:
+                        new_correct = new_letter
+                        break
+
+                result.append({
+                    'id':             q.id,
+                    'text_uz':        q.text_uz,
+                    'option_a':       options[0][1],
+                    'option_b':       options[1][1],
+                    'option_c':       options[2][1],
+                    'option_d':       options[3][1],
+                    'correct_answer': new_correct or q.correct_answer,
+                    'subject_id':     q.subject_id,
+                })
+            return result
+
+        # ── Guruhlar — tartib O'ZGARMAS ──────────────────────────────────────
+        groups = [
+            {
+                'label':      'Majburiy — Matematika',
+                'subject_id': 1,
+                'count':      config.MANDATORY_QUESTIONS_PER_SUBJECT,   # 10
+            },
+            {
+                'label':      "Majburiy — Ona tili",
+                'subject_id': 6,
+                'count':      config.MANDATORY_QUESTIONS_PER_SUBJECT,   # 10
+            },
+            {
+                'label':      'Majburiy — Tarix',
+                'subject_id': 5,
+                'count':      config.MANDATORY_QUESTIONS_PER_SUBJECT,   # 10
+            },
+            {
+                'label':      f'Asosiy (1-fan) — {subj1_name}',
+                'subject_id': subj1_id,
+                'count':      config.SPECIALIZED_QUESTIONS_PER_SUBJECT, # 30
+            },
+            {
+                'label':      f'Asosiy (2-fan) — {subj2_name}',
+                'subject_id': subj2_id,
+                'count':      config.SPECIALIZED_QUESTIONS_PER_SUBJECT, # 30
+            },
+        ]
+
+        ordered_questions = []
+        for grp in groups:
+            questions = _fetch_shuffled(grp['subject_id'], grp['count'])
+            for q in questions:
+                q['group_label'] = grp['label']
+            ordered_questions.extend(questions)
+
+        return ordered_questions[:90]
 
     @staticmethod
     def save_answer(
@@ -193,7 +274,6 @@ class TestService:
             participation.completed_at = datetime.utcnow()
             db.commit()
 
-            # is_(True) — SQLAlchemy uchun to'g'ri usul
             correct_count = db.query(UserAnswer).filter(
                 UserAnswer.participation_id == participation_id,
                 UserAnswer.is_correct.is_(True)
@@ -210,11 +290,10 @@ class TestService:
                 total_questions=total_count
             ))
 
-            # Leaderboard ham yangilash
             db.add(Leaderboard(
                 test_session_id=participation.test_session_id,
                 user_id=participation.user_id,
-                rank=0,          # Keyinroq qayta hisoblanadi
+                rank=0,
                 total_score=score
             ))
 
@@ -237,7 +316,6 @@ class TestService:
     @staticmethod
     def get_leaderboard(test_session_id: int, limit: int = 10) -> list:
         db = Session()
-        # total_score — Leaderboard modelidagi to'g'ri maydon nomi
         leaders = db.query(Leaderboard).filter(
             Leaderboard.test_session_id == test_session_id
         ).order_by(Leaderboard.total_score.desc()).limit(limit).all()

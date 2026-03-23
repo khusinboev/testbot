@@ -32,8 +32,6 @@ router = Router()
 
 
 def _err(e: Exception) -> str:
-    """callback_query.answer() uchun xato xabarini qisqartiradi (max 180 belgi).
-    Asosiy xatoni konsolga to'liq chiqaradi."""
     msg = str(e)
     logger.error("Handler xato:\n%s", traceback.format_exc())
     short = msg[:150].replace('\n', ' ')
@@ -54,11 +52,27 @@ def get_user_by_telegram_id(telegram_id: int) -> User:
 
 
 def _split_full_name(full_name: str) -> tuple[str, str]:
-    """'Ism Familiya' → ('Ism', 'Familiya'). Bitta so'z bo'lsa last_name=''."""
     parts = full_name.strip().split(None, 1)
     first = parts[0] if parts else full_name
     last = parts[1] if len(parts) > 1 else ""
     return first, last
+
+
+def _get_direction_subject_names(direction: Direction) -> tuple[str, str]:
+    """Yo'nalishning 1-fan va 2-fan nomlarini qaytaradi."""
+    db = Session()
+    try:
+        d = db.query(Direction).options(
+            joinedload(Direction.subject1),
+            joinedload(Direction.subject2)
+        ).filter(Direction.id == direction.id).first()
+        if d:
+            s1 = d.subject1.name_uz if d.subject1 else "—"
+            s2 = d.subject2.name_uz if d.subject2 else "—"
+            return s1, s2
+        return "—", "—"
+    finally:
+        db.close()
 
 
 async def show_main_menu(message: types.Message, state: FSMContext, user: User):
@@ -132,7 +146,6 @@ async def process_phone_contact(message: types.Message, state: FSMContext):
 
 @router.message(UserRegistrationStates.waiting_for_phone)
 async def process_phone_invalid(message: types.Message, state: FSMContext):
-    # Tugma orqali yuborilmagan har qanday xabarni rad etish
     keyboard = await get_phone_keyboard()
     await message.answer(
         "📱 Iltimos, quyidagi tugmani bosib telefon raqamingizni ulang:",
@@ -263,7 +276,6 @@ async def start_test_button(message: types.Message, state: FSMContext):
         await message.answer("❌ Siz ro'yxatdan o'tmagan edingiz!")
         return
 
-    # Yo'nalish belgilanmagan — avval so'rash
     if not user.direction_id:
         keyboard = await get_directions_keyboard()
         db = Session()
@@ -283,15 +295,31 @@ async def start_test_button(message: types.Message, state: FSMContext):
 
 
 async def _show_test_confirmation(message: types.Message, state: FSMContext, user: User):
-    """Test tasdiqlash xabarini ko'rsatish"""
+    """Test tasdiqlash xabarini ko'rsatish — yo'nalish fanlari bilan."""
+    # Yo'nalish fanlarini olish
+    if user.direction:
+        s1_name, s2_name = _get_direction_subject_names(user.direction)
+        direction_line = (
+            f"  • 📚 Yo'nalish: <b>{user.direction.name_uz}</b>\n"
+            f"  • 📖 1-asosiy fan: <b>{s1_name}</b>\n"
+            f"  • 📗 2-asosiy fan: <b>{s2_name}</b>"
+        )
+    else:
+        direction_line = "  • ❗ Yo'nalish belgilanmagan"
+
     confirmation_text = (
         f"📝 <b>Imtihonni boshlash</b>\n\n"
         f"<u>Imtihon haqida:</u>\n"
-        f"⏱️ Vaqt: 180 daqiqa\n"
-        f"❓ Savollar: 90 ta\n"
-        f"  • 30 ta majburiy (Matematika, Tarix, Ona tili)\n"
-        f"  • 60 ta ixtisoslashgan\n\n"
-        f"<u>Yo'nalish:</u> {user.direction.name_uz}\n\n"
+        f"⏱️ Vaqt: <b>180 daqiqa</b>\n"
+        f"❓ Savollar: <b>90 ta</b>\n\n"
+        f"<u>Savollar tartibi:</u>\n"
+        f"  1️⃣ Majburiy — Matematika (10 ta)\n"
+        f"  2️⃣ Majburiy — Ona tili (10 ta)\n"
+        f"  3️⃣ Majburiy — Tarix (10 ta)\n"
+        f"  4️⃣ Asosiy 1-fan (30 ta)\n"
+        f"  5️⃣ Asosiy 2-fan (30 ta)\n\n"
+        f"<u>Sizning yo'nalishingiz:</u>\n"
+        f"{direction_line}\n\n"
         f"<b>Boshlaysizmi?</b>"
     )
     await message.answer(
@@ -342,14 +370,16 @@ async def test_direction_selected(callback_query: types.CallbackQuery, state: FS
 
     direction_id = callback_query.data.split("_")[1]
     db = Session()
-    direction = db.query(Direction).filter(Direction.id == direction_id).first()
+    direction = db.query(Direction).options(
+        joinedload(Direction.subject1),
+        joinedload(Direction.subject2)
+    ).filter(Direction.id == direction_id).first()
 
     if not direction:
         await callback_query.answer("❌ Yo'nalish topilmadi!")
         db.close()
         return
 
-    # Sessiondan yopilmadan oldin nomni olib qo'yamiz — DetachedInstanceError oldini olish
     direction_name = direction.name_uz
 
     user_db = db.query(User).filter(
@@ -366,20 +396,18 @@ async def test_direction_selected(callback_query: types.CallbackQuery, state: FS
     await _show_test_confirmation(callback_query.message, state, user)
 
 
-# ─── Test tasdiqlash — boshqa xabarlarni o'chirish ────────────────────────────
+# ─── Test tasdiqlash ──────────────────────────────────────────────────────────
 
 @router.message(TestSessionStates.test_confirmation)
 async def block_messages_during_confirmation(message: types.Message, state: FSMContext):
-    """
-    Test tasdiqlash ekranida barcha xabarlarni o'chirib, faqat inline tugmalarni qabul qilish.
-    """
     try:
         await message.delete()
     except Exception:
         pass
-    # Yengil eslatma (o'chadi)
     try:
-        reminder = await message.answer("⚠️ Iltimos, faqat «✅ Boshlash» yoki «❌ Bekor qil» tugmasini bosing.")
+        reminder = await message.answer(
+            "⚠️ Iltimos, faqat «✅ Boshlash» yoki «❌ Bekor qil» tugmasini bosing."
+        )
         import asyncio
         await asyncio.sleep(2)
         await reminder.delete()
@@ -420,31 +448,61 @@ async def confirm_test_start(callback_query: types.CallbackQuery, state: FSMCont
                 await callback_query.answer("❌ Savollar topilmadi!", show_alert=True)
                 return
 
+            # questions endi dict ro'yxati (variantlar aralashtirilgan)
             await state.update_data(
                 participation_id=participation.id,
                 test_session_id=participation.test_session_id,
-                questions=[(q.id, q.text_uz, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_answer) for q in questions],
+                questions=questions,          # dict ro'yxati
                 current_question_index=0,
                 answers={}
             )
 
             await callback_query.message.delete()
-            question = questions[0]
-            question_text = (
-                f"<b>Savol #1/{len(questions)}</b>\n\n"
-                f"{question.text_uz}\n\n"
-                f"A) {question.option_a}\n"
-                f"B) {question.option_b}\n"
-                f"C) {question.option_c}\n"
-                f"D) {question.option_d}"
-            )
+            first_q = questions[0]
+            question_text = _format_question(first_q, index=0, total=len(questions))
             await callback_query.message.answer(
-                question_text, reply_markup=get_test_answer_keyboard(), parse_mode="HTML"
+                question_text,
+                reply_markup=get_test_answer_keyboard(),
+                parse_mode="HTML"
             )
             await state.set_state(TestSessionStates.test_active)
         except Exception as e:
             logger.error("confirm_test_start xato: %s", traceback.format_exc())
             await callback_query.answer(_err(e), show_alert=True)
+
+
+def _format_question(q: dict, index: int, total: int) -> str:
+    """
+    Savol matnini chiroyli formatlaydi.
+    q — test_service.get_test_questions() dan kelgan dict.
+    """
+    group_label = q.get('group_label', '')
+    # Guruh yorlig'idan emoji ajratamiz
+    # Guruh 1–3 = Majburiy, 4–5 = Asosiy
+    if 'Majburiy' in group_label:
+        group_emoji = '📌'
+        group_type  = 'Majburiy'
+    else:
+        group_emoji = '🎯'
+        group_type  = 'Asosiy'
+
+    # Fan nomini group_label dan ajratamiz: "Majburiy — Matematika" → "Matematika"
+    fan_name = group_label.split('—')[-1].strip() if '—' in group_label else group_label
+
+    header = (
+        f"{group_emoji} <b>{group_type} | {fan_name}</b>\n"
+        f"<b>Savol {index + 1} / {total}</b>"
+    )
+
+    return (
+        f"{header}\n"
+        f"{'─' * 28}\n\n"
+        f"{q['text_uz']}\n\n"
+        f"<b>A)</b> {q['option_a']}\n"
+        f"<b>B)</b> {q['option_b']}\n"
+        f"<b>C)</b> {q['option_c']}\n"
+        f"<b>D)</b> {q['option_d']}"
+    )
 
 
 @router.callback_query(TestSessionStates.test_confirmation, F.data == "test_cancel")
@@ -481,13 +539,15 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
         answer = callback_query.data.split("_")[1]
         data = await state.get_data()
         current_index = data.get('current_question_index', 0)
-        questions = data.get('questions', [])
+        questions = data.get('questions', [])          # dict ro'yxati
         answers = data.get('answers', {})
         participation_id = data.get('participation_id')
         test_session_id = data.get('test_session_id')
 
         if not questions or participation_id is None:
-            await callback_query.answer("❌ Test ma'lumotlari topilmadi. /start bosing.", show_alert=True)
+            await callback_query.answer(
+                "❌ Test ma'lumotlari topilmadi. /start bosing.", show_alert=True
+            )
             await state.clear()
             return
 
@@ -495,16 +555,19 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
             await callback_query.answer()
             return
 
+        current_q = questions[current_index]
+
         if answer != "skip":
-            question_id = questions[current_index][0]
             answers[str(current_index)] = answer
             user = get_user_by_telegram_id(uid)
             if user:
+                # DB da saqlashda asl correct_answer ishlatiladi
+                # (test_service variantlarni aralashtirgan, lekin correct_answer ni yangilagan)
                 TestService.save_answer(
                     participation_id=participation_id,
                     user_id=user.id,
                     test_session_id=test_session_id,
-                    question_id=question_id,
+                    question_id=current_q['id'],
                     selected_answer=answer
                 )
         else:
@@ -513,6 +576,7 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
         current_index += 1
 
         if current_index >= len(questions):
+            # Test tugadi
             score_info = TestService.complete_test(participation_id)
             try:
                 await callback_query.message.delete()
@@ -525,7 +589,7 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
                 )
                 result_text = (
                     f"✅ <b>Imtihon tugallandi!</b>\n\n"
-                    f"• 📈 Ball: {score_info['score']}\n"
+                    f"• 📈 Ball: <b>{score_info['score']}</b>\n"
                     f"• ✅ To'g'ri: {score_info['correct_count']}/{score_info['total_questions']}\n"
                     f"• 📊 Foiz: {pct:.1f}%\n\n"
                     f"🏆 Reytingda o'zingizni tekshiring!"
@@ -537,16 +601,14 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
             )
             await state.set_state(UserMainMenuStates.main_menu)
         else:
-            question = questions[current_index]
-            question_text = (
-                f"<b>Savol #{current_index + 1}/{len(questions)}</b>\n\n"
-                f"{question[1]}\n\n"
-                f"A) {question[2]}\nB) {question[3]}\nC) {question[4]}\nD) {question[5]}"
-            )
+            next_q = questions[current_index]
+            question_text = _format_question(next_q, index=current_index, total=len(questions))
             await state.update_data(current_question_index=current_index, answers=answers)
             try:
                 await callback_query.message.edit_text(
-                    question_text, reply_markup=get_test_answer_keyboard(), parse_mode="HTML"
+                    question_text,
+                    reply_markup=get_test_answer_keyboard(),
+                    parse_mode="HTML"
                 )
             except Exception:
                 pass
@@ -584,7 +646,7 @@ async def finish_test_early(callback_query: types.CallbackQuery, state: FSMConte
             )
             result_text = (
                 f"✅ <b>Imtihon tugallandi!</b>\n\n"
-                f"• 📈 Ball: {score_info['score']}\n"
+                f"• 📈 Ball: <b>{score_info['score']}</b>\n"
                 f"• ✅ To'g'ri: {score_info['correct_count']}/{score_info['total_questions']}\n"
                 f"• 📊 Foiz: {pct:.1f}%"
             )
@@ -627,7 +689,8 @@ async def show_my_results(message: types.Message, state: FSMContext):
             )
         await message.answer(result_text, parse_mode="HTML")
     except Exception as e:
-        logger.error("Xato: %s", traceback.format_exc()); await message.answer(f"❌ Ichki xato yuz berdi. Logni tekshiring.")
+        logger.error("Xato: %s", traceback.format_exc())
+        await message.answer("❌ Ichki xato yuz berdi.")
     finally:
         db.close()
 
@@ -650,7 +713,8 @@ async def show_leaderboard(message: types.Message, state: FSMContext):
             )
         await message.answer(text, parse_mode="HTML")
     except Exception as e:
-        logger.error("Xato: %s", traceback.format_exc()); await message.answer(f"❌ Ichki xato yuz berdi. Logni tekshiring.")
+        logger.error("Xato: %s", traceback.format_exc())
+        await message.answer("❌ Ichki xato yuz berdi.")
     finally:
         db.close()
 
@@ -660,13 +724,18 @@ async def show_help(message: types.Message, state: FSMContext):
     await message.answer(
         "❓ <b>Yordam</b>\n\n"
         "<b>Imtihon haqida:</b>\n"
-        "• 180 daqiqa davom etadi\n"
-        "• Jami 90 ta savol\n"
-        "• 30 ta majburiy + 60 ta ixtisoslashgan\n\n"
+        "• ⏱ 180 daqiqa davom etadi\n"
+        "• ❓ Jami 90 ta savol\n\n"
+        "<b>Savollar tartibi:</b>\n"
+        "  1️⃣ Majburiy — Matematika (10 ta)\n"
+        "  2️⃣ Majburiy — Ona tili (10 ta)\n"
+        "  3️⃣ Majburiy — Tarix (10 ta)\n"
+        "  4️⃣ Asosiy 1-fan (30 ta)\n"
+        "  5️⃣ Asosiy 2-fan (30 ta)\n\n"
         "<b>Ball tizimi:</b>\n"
-        "• Majburiy: 1.1 ball/savol\n"
-        "• Ixtisoslashgan 1-fan: 3.1 ball/savol\n"
-        "• Ixtisoslashgan 2-fan: 2.1 ball/savol\n\n"
+        "• Majburiy fanlar: 1.1 ball/savol\n"
+        "• Asosiy 1-fan: 3.1 ball/savol\n"
+        "• Asosiy 2-fan: 2.1 ball/savol\n\n"
         "<b>Profil:</b> Yo'nalish va F.I.SH ni «👤 Profilim» bo'limidan o'zgartirish mumkin.",
         parse_mode="HTML"
     )
@@ -687,6 +756,17 @@ async def show_profile(message: types.Message, state: FSMContext):
         direction_name = user.direction.name_uz if user.direction else "❗ Belgilanmagan"
         full_name = f"{user.first_name} {user.last_name}".strip()
 
+        # Yo'nalish fan nomlari
+        if user.direction:
+            s1, s2 = _get_direction_subject_names(user.direction)
+            direction_block = (
+                f"• 📚 Yo'nalish: {direction_name}\n"
+                f"• 📖 1-asosiy fan: {s1}\n"
+                f"• 📗 2-asosiy fan: {s2}"
+            )
+        else:
+            direction_block = f"• 📚 Yo'nalish: {direction_name}"
+
         text = (
             f"👤 <b>Profil</b>\n\n"
             f"<b>Shaxsiy ma'lumotlar:</b>\n"
@@ -694,7 +774,7 @@ async def show_profile(message: types.Message, state: FSMContext):
             f"• 📱 Telefon: {user.phone}\n"
             f"• 📍 Viloyat: {user.region.name_uz}\n"
             f"• 📍 Tuman: {user.district.name_uz}\n"
-            f"• 📚 Yo'nalish: {direction_name}\n\n"
+            f"{direction_block}\n\n"
             f"<b>Statistika:</b>\n"
             f"• 🧪 Imtihon soni: {len(scores)}\n"
             f"• 📊 Eng yuqori ball: {best_score}\n"
@@ -703,7 +783,8 @@ async def show_profile(message: types.Message, state: FSMContext):
         )
         await message.answer(text, reply_markup=get_profile_settings_keyboard(), parse_mode="HTML")
     except Exception as e:
-        logger.error("Xato: %s", traceback.format_exc()); await message.answer(f"❌ Ichki xato yuz berdi. Logni tekshiring.")
+        logger.error("Xato: %s", traceback.format_exc())
+        await message.answer("❌ Ichki xato yuz berdi.")
     finally:
         db.close()
 
@@ -748,12 +829,11 @@ async def profile_edit_name_save(message: types.Message, state: FSMContext):
             f"✅ F.I.SH yangilandi: <b>{full_name}</b>",
             parse_mode="HTML"
         )
-        # Yangilangan profilni ko'rsatish
-        user_fresh = get_user_by_telegram_id(message.from_user.id)
         await show_profile(message, state)
     except Exception as e:
         db.rollback()
-        logger.error("Xato: %s", traceback.format_exc()); await message.answer(f"❌ Ichki xato yuz berdi. Logni tekshiring.")
+        logger.error("Xato: %s", traceback.format_exc())
+        await message.answer("❌ Ichki xato yuz berdi.")
     finally:
         db.close()
 
@@ -803,13 +883,24 @@ async def profile_direction_back(callback_query: types.CallbackQuery, state: FSM
     db.close()
     direction_name = user.direction.name_uz if user.direction else "❗ Belgilanmagan"
     full_name = f"{user.first_name} {user.last_name}".strip()
+
+    if user.direction:
+        s1, s2 = _get_direction_subject_names(user.direction)
+        direction_block = (
+            f"• 📚 Yo'nalish: {direction_name}\n"
+            f"• 📖 1-asosiy fan: {s1}\n"
+            f"• 📗 2-asosiy fan: {s2}"
+        )
+    else:
+        direction_block = f"• 📚 Yo'nalish: {direction_name}"
+
     text = (
         f"👤 <b>Profil</b>\n\n"
         f"• 📝 F.I.SH: {full_name}\n"
         f"• 📱 Telefon: {user.phone}\n"
         f"• 📍 Viloyat: {user.region.name_uz}\n"
         f"• 📍 Tuman: {user.district.name_uz}\n"
-        f"• 📚 Yo'nalish: {direction_name}\n\n"
+        f"{direction_block}\n\n"
         f"• 🧪 Imtihon soni: {len(scores)}\n"
         f"• 📊 Eng yuqori ball: {best_score}\n\n"
         f"<b>Tahrirlash:</b>"
@@ -821,7 +912,10 @@ async def profile_direction_back(callback_query: types.CallbackQuery, state: FSM
 
 @router.callback_query(ProfileEditStates.edit_direction, F.data.startswith("direction_"))
 async def profile_direction_selected(callback_query: types.CallbackQuery, state: FSMContext):
-    if "_page_" in callback_query.data or callback_query.data in ("direction_search", "direction_search_empty", "direction_search_back", "direction_list_back"):
+    if "_page_" in callback_query.data or callback_query.data in (
+        "direction_search", "direction_search_empty",
+        "direction_search_back", "direction_list_back"
+    ):
         return
 
     direction_id = callback_query.data.split("_")[1]
@@ -832,7 +926,6 @@ async def profile_direction_selected(callback_query: types.CallbackQuery, state:
         db.close()
         return
 
-    direction_name = direction.name_uz  # sessiondan oldin olib qo'yamiz
     user = db.query(User).filter(User.telegram_id == callback_query.from_user.id).first()
     if user:
         user.direction_id = direction_id
@@ -846,6 +939,16 @@ async def profile_direction_selected(callback_query: types.CallbackQuery, state:
     direction_name = user_fresh.direction.name_uz if user_fresh.direction else "—"
     full_name = f"{user_fresh.first_name} {user_fresh.last_name}".strip()
 
+    if user_fresh.direction:
+        s1, s2 = _get_direction_subject_names(user_fresh.direction)
+        direction_block = (
+            f"• 📚 Yo'nalish: {direction_name}\n"
+            f"• 📖 1-asosiy fan: {s1}\n"
+            f"• 📗 2-asosiy fan: {s2}"
+        )
+    else:
+        direction_block = f"• 📚 Yo'nalish: {direction_name}"
+
     db2 = Session()
     scores = db2.query(Score).filter(Score.user_id == user_fresh.id).all()
     best_score = max((s.score for s in scores), default=0)
@@ -857,7 +960,7 @@ async def profile_direction_selected(callback_query: types.CallbackQuery, state:
         f"• 📱 Telefon: {user_fresh.phone}\n"
         f"• 📍 Viloyat: {user_fresh.region.name_uz}\n"
         f"• 📍 Tuman: {user_fresh.district.name_uz}\n"
-        f"• 📚 Yo'nalish: {direction_name}\n\n"
+        f"{direction_block}\n\n"
         f"• 🧪 Imtihon soni: {len(scores)}\n"
         f"• 📊 Eng yuqori ball: {best_score}\n\n"
         f"<b>Tahrirlash:</b>"
@@ -867,7 +970,7 @@ async def profile_direction_selected(callback_query: types.CallbackQuery, state:
     )
 
 
-# ─── Inline qidiruv natijasi tanlandi ────────────────────────────────────────
+# ─── Inline qidiruv natijasi ─────────────────────────────────────────────────
 
 @router.message(F.text == "direction_search_failed")
 async def handle_search_failed(message: types.Message, state: FSMContext):
@@ -879,20 +982,17 @@ async def handle_search_failed(message: types.Message, state: FSMContext):
 
 @router.message(F.text.startswith("direction_chosen:"))
 async def handle_any_direction_chosen(message: types.Message, state: FSMContext):
-    """
-    Inline yo'nalish tanlash — state filtrisiz.
-    Har qanday holatda kelsa ham ushlanadi.
-    """
     direction_id = message.text.split(":", 1)[1].strip()
-
-    # Avval xabarni o'chirib yuboramiz — ugly text ko'rinmasin
     try:
         await message.delete()
     except Exception:
         pass
 
     db = Session()
-    direction = db.query(Direction).filter(Direction.id == direction_id).first()
+    direction = db.query(Direction).options(
+        joinedload(Direction.subject1),
+        joinedload(Direction.subject2)
+    ).filter(Direction.id == direction_id).first()
     if not direction:
         await message.answer("❌ Yo'nalish topilmadi!")
         db.close()
@@ -922,26 +1022,37 @@ async def handle_any_direction_chosen(message: types.Message, state: FSMContext)
         await state.set_state(UserMainMenuStates.main_menu)
         await message.answer(f"✅ Yo'nalish saqlandi: <b>{direction_name}</b>", parse_mode="HTML")
         user_fresh = get_user_by_telegram_id(message.from_user.id)
-        dn = user_fresh.direction.name_uz if user_fresh.direction else "—"
-        fn = f"{user_fresh.first_name} {user_fresh.last_name}".strip()
+        direction_name_fresh = user_fresh.direction.name_uz if user_fresh.direction else "—"
+        full_name = f"{user_fresh.first_name} {user_fresh.last_name}".strip()
+
+        if user_fresh.direction:
+            s1, s2 = _get_direction_subject_names(user_fresh.direction)
+            direction_block = (
+                f"• 📚 Yo'nalish: {direction_name_fresh}\n"
+                f"• 📖 1-asosiy fan: {s1}\n"
+                f"• 📗 2-asosiy fan: {s2}"
+            )
+        else:
+            direction_block = f"• 📚 Yo'nalish: {direction_name_fresh}"
+
         db2 = Session()
         scores = db2.query(Score).filter(Score.user_id == user_fresh.id).all()
         best = max((s.score for s in scores), default=0)
         db2.close()
+
         text = (
             f"👤 <b>Profil</b>\n\n"
-            f"• 📝 F.I.SH: {fn}\n"
+            f"• 📝 F.I.SH: {full_name}\n"
             f"• 📱 Telefon: {user_fresh.phone}\n"
             f"• 📍 Viloyat: {user_fresh.region.name_uz}\n"
             f"• 📍 Tuman: {user_fresh.district.name_uz}\n"
-            f"• 📚 Yo'nalish: {dn}\n\n"
+            f"{direction_block}\n\n"
             f"• 🧪 Imtihon soni: {len(scores)}\n"
             f"• 📊 Eng yuqori ball: {best}\n\n"
             f"<b>Tahrirlash:</b>"
         )
         await message.answer(text, reply_markup=get_profile_settings_keyboard(), parse_mode="HTML")
     else:
-        # Noma'lum holat — asosiy menyuga qaytarish
         await message.answer(f"✅ Yo'nalish saqlandi: <b>{direction_name}</b>", parse_mode="HTML")
 
 
@@ -991,12 +1102,10 @@ async def test_direction_search_query(message: types.Message, state: FSMContext)
     if not query:
         await message.answer("❌ Iltimos, qidirish uchun matn kiriting.")
         return
-
     keyboard = await get_direction_search_results(query)
     db = Session()
     count = db.query(Direction).filter(Direction.name_uz.ilike(f"%{query}%")).count()
     db.close()
-
     await message.answer(
         f"🔍 <b>«{query}»</b> bo'yicha natijalar: {count} ta",
         reply_markup=keyboard,
@@ -1021,7 +1130,10 @@ async def test_direction_search_back(callback_query: types.CallbackQuery, state:
 
 @router.callback_query(TestSessionStates.searching_direction, F.data.startswith("direction_"))
 async def test_direction_search_selected(callback_query: types.CallbackQuery, state: FSMContext):
-    if callback_query.data in ("direction_search", "direction_search_empty", "direction_search_back", "direction_list_back"):
+    if callback_query.data in (
+        "direction_search", "direction_search_empty",
+        "direction_search_back", "direction_list_back"
+    ):
         return
 
     direction_id = callback_query.data.split("_")[1]
@@ -1066,12 +1178,10 @@ async def profile_direction_search_query(message: types.Message, state: FSMConte
     if not query:
         await message.answer("❌ Iltimos, qidirish uchun matn kiriting.")
         return
-
     keyboard = await get_direction_search_results(query)
     db = Session()
     count = db.query(Direction).filter(Direction.name_uz.ilike(f"%{query}%")).count()
     db.close()
-
     await message.answer(
         f"🔍 <b>«{query}»</b> bo'yicha natijalar: {count} ta",
         reply_markup=keyboard,
@@ -1096,7 +1206,10 @@ async def profile_direction_search_back(callback_query: types.CallbackQuery, sta
 
 @router.callback_query(ProfileEditStates.searching_direction, F.data.startswith("direction_"))
 async def profile_direction_search_selected(callback_query: types.CallbackQuery, state: FSMContext):
-    if callback_query.data in ("direction_search", "direction_search_empty", "direction_search_back", "direction_list_back"):
+    if callback_query.data in (
+        "direction_search", "direction_search_empty",
+        "direction_search_back", "direction_list_back"
+    ):
         return
 
     direction_id = callback_query.data.split("_")[1]
@@ -1120,17 +1233,29 @@ async def profile_direction_search_selected(callback_query: types.CallbackQuery,
     user_fresh = get_user_by_telegram_id(callback_query.from_user.id)
     dn = user_fresh.direction.name_uz if user_fresh.direction else "—"
     fn = f"{user_fresh.first_name} {user_fresh.last_name}".strip()
+
+    if user_fresh.direction:
+        s1, s2 = _get_direction_subject_names(user_fresh.direction)
+        direction_block = (
+            f"• 📚 Yo'nalish: {dn}\n"
+            f"• 📖 1-asosiy fan: {s1}\n"
+            f"• 📗 2-asosiy fan: {s2}"
+        )
+    else:
+        direction_block = f"• 📚 Yo'nalish: {dn}"
+
     db2 = Session()
     scores = db2.query(Score).filter(Score.user_id == user_fresh.id).all()
     best = max((s.score for s in scores), default=0)
     db2.close()
+
     text = (
         f"👤 <b>Profil</b>\n\n"
         f"• 📝 F.I.SH: {fn}\n"
         f"• 📱 Telefon: {user_fresh.phone}\n"
         f"• 📍 Viloyat: {user_fresh.region.name_uz}\n"
         f"• 📍 Tuman: {user_fresh.district.name_uz}\n"
-        f"• 📚 Yo'nalish: {dn}\n\n"
+        f"{direction_block}\n\n"
         f"• 🧪 Imtihon soni: {len(scores)}\n"
         f"• 📊 Eng yuqori ball: {best}\n\n"
         f"<b>Tahrirlash:</b>"

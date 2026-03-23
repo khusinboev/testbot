@@ -35,7 +35,73 @@
       </select>
       <button type="submit" class="btn btn-primary">Filtr</button>
       {% if search or subject_filter %}<a href="{{ url_for('questions') }}" class="btn btn-ghost">✕</a>{% endif %}
+
       <div style="margin-left:auto" class="flex gap-2">
+        <!-- Export tugmasi (dropdown) -->
+        <div style="position:relative" id="exportDropdownWrap">
+          <button type="button" class="btn btn-ghost"
+                  onclick="toggleExportMenu()" style="gap:6px">
+            📥 Export
+            <span style="font-size:10px;margin-left:2px">▾</span>
+          </button>
+          <div id="exportMenu" style="
+            display:none;
+            position:absolute;top:calc(100% + 6px);right:0;
+            background:var(--surface);border:1px solid var(--border);
+            border-radius:10px;padding:8px;min-width:220px;
+            box-shadow:0 8px 24px rgba(0,0,0,.3);z-index:200">
+
+            <div style="font-size:11px;color:var(--muted);padding:4px 10px 6px;
+                        font-weight:600;letter-spacing:.5px;text-transform:uppercase">
+              Export formati
+            </div>
+
+            <!-- Barcha savollar -->
+            <a href="{{ url_for('export_questions') }}"
+               class="export-item" onclick="closeExportMenu()">
+              <span style="font-size:16px">📊</span>
+              <div>
+                <div style="font-weight:600;font-size:13px">Barcha savollar</div>
+                <div style="font-size:11px;color:var(--muted)">Jami {{ total }} ta · Barcha fanlar</div>
+              </div>
+            </a>
+
+            {% if subject_filter %}
+            <!-- Tanlangan fan -->
+            {% for s in subjects %}{% if s.id == subject_filter %}
+            <a href="{{ url_for('export_questions', subject=s.id) }}"
+               class="export-item active-export" onclick="closeExportMenu()">
+              <span style="font-size:16px">📚</span>
+              <div>
+                <div style="font-weight:600;font-size:13px">{{ s.name_uz }}</div>
+                <div style="font-size:11px;color:var(--muted)">{{ subject_counts.get(s.id,0) }} ta savol</div>
+              </div>
+            </a>
+            {% endif %}{% endfor %}
+            {% endif %}
+
+            <div style="height:1px;background:var(--border);margin:6px 0"></div>
+
+            <!-- Fan bo'yicha alohida -->
+            <div style="font-size:11px;color:var(--muted);padding:4px 10px 4px;font-weight:600;
+                        letter-spacing:.5px;text-transform:uppercase">Fan bo'yicha</div>
+            {% for s in subjects %}
+            {% if subject_counts.get(s.id, 0) > 0 %}
+            <a href="{{ url_for('export_questions', subject=s.id) }}"
+               class="export-item {% if subject_filter == s.id %}active-export{% endif %}"
+               onclick="closeExportMenu()">
+              <span style="font-size:14px">•</span>
+              <div>
+                <div style="font-size:12px;font-weight:500">{{ s.name_uz }}</div>
+                <div style="font-size:11px;color:var(--muted)">{{ subject_counts.get(s.id,0) }} ta</div>
+              </div>
+            </a>
+            {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Import tugmasi -->
         <button type="button" class="btn btn-success" onclick="openImport()">
           📤 Excel import
         </button>
@@ -46,6 +112,11 @@
 
 <div class="flex gap-3 mb-4 text-sm text-muted">
   <span>Jami: <strong class="text-accent">{{ total }}</strong> ta savol</span>
+  {% if subject_filter %}
+  {% for s in subjects %}{% if s.id == subject_filter %}
+  <span>· Filtr: <strong class="text-accent">{{ s.name_uz }}</strong></span>
+  {% endif %}{% endfor %}
+  {% endif %}
 </div>
 
 <!-- Table -->
@@ -105,7 +176,7 @@
   {% if page > 1 %}
   <a href="?page={{ page-1 }}&subject={{ subject_filter }}&search={{ search }}" class="page-btn">←</a>
   {% endif %}
-  {% for p in range([1,page-2]|max, [total_pages+1,page+3]|min) %}
+  {% for p in range([1,page-2]|max, [total_pages+1, page+3]|min) %}
   <a href="?page={{ p }}&subject={{ subject_filter }}&search={{ search }}"
      class="page-btn {% if p==page %}active{% endif %}">{{ p }}</a>
   {% endfor %}
@@ -131,6 +202,9 @@
         F: To'g'ri javob (A/B/C/D)
       </div>
       <div class="text-muted text-xs mt-2">* 1-qator — sarlavha, 2-qatordan boshlab savollar</div>
+      <div class="mt-2" style="font-size:12px;color:var(--success)">
+        💡 Export qilingan Excel faylni to'g'ridan-to'g'ri import qilsa bo'ladi
+      </div>
     </div>
 
     <div class="form-group">
@@ -138,7 +212,9 @@
       <select class="form-control" id="importSubject">
         <option value="">— Fan tanlang —</option>
         {% for s in subjects %}
-        <option value="{{ s.id }}">{{ s.name_uz }}</option>
+        <option value="{{ s.id }}" {% if subject_filter == s.id %}selected{% endif %}>
+          {{ s.name_uz }}
+        </option>
         {% endfor %}
       </select>
     </div>
@@ -176,8 +252,45 @@
 
 {% endblock %}
 
+{% block head %}
+<style>
+  .export-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    color: var(--text);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background .15s;
+    margin-bottom: 2px;
+  }
+  .export-item:hover { background: var(--surface2); }
+  .active-export {
+    background: rgba(79,110,247,.1);
+    border: 1px solid rgba(79,110,247,.2);
+  }
+  .active-export:hover { background: rgba(79,110,247,.18); }
+</style>
+{% endblock %}
+
 {% block scripts %}
 <script>
+// ── Export dropdown ──────────────────────────────────────────────────────────
+function toggleExportMenu() {
+  const menu = document.getElementById('exportMenu');
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+function closeExportMenu() {
+  document.getElementById('exportMenu').style.display = 'none';
+}
+document.addEventListener('click', e => {
+  const wrap = document.getElementById('exportDropdownWrap');
+  if (wrap && !wrap.contains(e.target)) closeExportMenu();
+});
+
+// ── Import modal ─────────────────────────────────────────────────────────────
 function openImport() {
   document.getElementById('importModal').classList.add('open');
 }
@@ -224,6 +337,7 @@ async function doImport() {
   btn.disabled = false;
 }
 
+// ── Delete question ──────────────────────────────────────────────────────────
 function deleteQuestion(id) {
   document.getElementById('delQModal').classList.add('open');
   document.getElementById('confirmDelQ').onclick = async () => {
