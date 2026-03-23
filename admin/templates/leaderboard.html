@@ -7,6 +7,11 @@
 <div class="card mb-4">
   <div class="card-body" style="padding:16px">
     <form method="GET" class="flex gap-3 items-center" style="flex-wrap:wrap">
+      <select name="period" class="form-control" style="max-width:150px">
+        <option value="daily" {% if period_filter == 'daily' %}selected{% endif %}>Kunlik</option>
+        <option value="weekly" {% if period_filter == 'weekly' %}selected{% endif %}>Haftalik</option>
+        <option value="all_time" {% if period_filter == 'all_time' %}selected{% endif %}>Barcha vaqt</option>
+      </select>
       <select name="direction" class="form-control" style="max-width:280px">
         <option value="">Barcha yo'nalishlar</option>
         {% for d in directions %}
@@ -16,7 +21,7 @@
         {% endfor %}
       </select>
       <button type="submit" class="btn btn-primary">Filtr</button>
-      {% if direction_filter %}<a href="{{ url_for('leaderboard') }}" class="btn btn-ghost">✕</a>{% endif %}
+      {% if direction_filter or period_filter != 'all_time' %}<a href="{{ url_for('leaderboard') }}" class="btn btn-ghost">✕</a>{% endif %}
       <div style="margin-left:auto">
         <a href="{{ url_for('export_scores') }}" class="btn btn-success btn-sm">📥 Excel</a>
       </div>
@@ -25,6 +30,7 @@
 </div>
 
 <div class="flex gap-3 mb-4 text-sm text-muted">
+  <span>{{ period_names[period_filter] }} reyting</span> |
   Jami: <strong class="text-accent">{{ total }}</strong> ta natija
 </div>
 
@@ -33,52 +39,43 @@
     <table>
       <thead>
         <tr>
-          <th>#</th><th>F.I.SH</th><th>Telefon</th>
-          <th>Yo'nalish</th><th>Ball</th><th>To'g'ri</th><th>Foiz</th><th>Sana</th>
+          <th>O'rin</th><th>F.I.SH</th><th>Telefon</th>
+          <th>Yo'nalish</th><th>Ball</th><th>Sana</th>
         </tr>
       </thead>
       <tbody>
-        {% for s in scores %}
-        {% set offset = (page-1)*25 %}
+        {% for entry in entries %}
         <tr>
           <td>
-            {% set rank = loop.index + offset %}
-            {% if rank == 1 %}🥇
-            {% elif rank == 2 %}🥈
-            {% elif rank == 3 %}🥉
-            {% else %}{{ rank }}{% endif %}
+            {% if entry.rank == 1 %}🥇
+            {% elif entry.rank == 2 %}🥈
+            {% elif entry.rank == 3 %}🥉
+            {% else %}{{ entry.rank }}{% endif %}
           </td>
           <td class="fw-700">
-            {% if s.user %}
-            <a href="{{ url_for('user_detail', user_id=s.user.id) }}"
+            {% if entry.user %}
+            <a href="{{ url_for('user_detail', user_id=entry.user.id) }}"
                style="color:var(--text);text-decoration:none">
-              {{ s.user.first_name }} {{ s.user.last_name or '' }}
+              {{ entry.user.first_name }} {{ entry.user.last_name or '' }}
             </a>
             {% else %}—{% endif %}
           </td>
-          <td class="font-mono text-sm text-muted">{{ s.user.phone if s.user else '—' }}</td>
+          <td class="font-mono text-sm text-muted">{{ entry.user.phone if entry.user else '—' }}</td>
           <td class="text-sm text-muted">
-            {% if s.user and s.user.direction %}
-            <span title="{{ s.user.direction.name_uz }}">
-              {{ s.user.direction.name_uz[:25] }}{% if s.user.direction.name_uz|length > 25 %}…{% endif %}
+            {% if entry.direction %}
+            <span title="{{ entry.direction.name_uz }}">
+              {{ entry.direction.name_uz[:25] }}{% if entry.direction.name_uz|length > 25 %}…{% endif %}
             </span>
             {% else %}—{% endif %}
           </td>
           <td>
-            <span class="badge badge-blue font-mono" style="font-size:13px">{{ s.score }}</span>
+            <span class="badge badge-blue font-mono" style="font-size:13px">{{ entry.total_score }}</span>
           </td>
-          <td class="text-sm">{{ s.correct_count }}/{{ s.total_questions }}</td>
-          <td>
-            {% set pct = (s.correct_count / s.total_questions * 100) if s.total_questions else 0 %}
-            <span class="font-mono text-sm {% if pct>=70 %}text-success{% elif pct>=50 %}text-accent{% else %}text-danger{% endif %}">
-              {{ pct|round(1) }}%
-            </span>
-          </td>
-          <td class="text-muted text-xs">{{ s.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+          <td class="text-muted text-xs">{{ entry.timestamp.strftime('%d.%m.%Y %H:%M') }}</td>
         </tr>
         {% else %}
         <tr>
-          <td colspan="8" style="text-align:center;padding:40px;color:var(--muted)">
+          <td colspan="6" style="text-align:center;padding:40px;color:var(--muted)">
             Hali natija yo'q
           </td>
         </tr>
@@ -91,14 +88,14 @@
 {% if total_pages > 1 %}
 <div class="pagination">
   {% if page > 1 %}
-  <a href="?page={{ page-1 }}&direction={{ direction_filter }}" class="page-btn">←</a>
+  <a href="?page={{ page-1 }}&direction={{ direction_filter }}&period={{ period_filter }}" class="page-btn">←</a>
   {% endif %}
   {% for p in range([1,page-2]|max, [total_pages+1,page+3]|min) %}
-  <a href="?page={{ p }}&direction={{ direction_filter }}"
+  <a href="?page={{ p }}&direction={{ direction_filter }}&period={{ period_filter }}"
      class="page-btn {% if p==page %}active{% endif %}">{{ p }}</a>
   {% endfor %}
   {% if page < total_pages %}
-  <a href="?page={{ page+1 }}&direction={{ direction_filter }}" class="page-btn">→</a>
+  <a href="?page={{ page+1 }}&direction={{ direction_filter }}&period={{ period_filter }}" class="page-btn">→</a>
   {% endif %}
 </div>
 {% endif %}

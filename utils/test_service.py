@@ -67,29 +67,49 @@ class TestService:
     # Participation
     # ─────────────────────────────────────────────────────────────
     @staticmethod
-    def create_participation(user_id: int, direction_id: str) -> UserTestParticipation:
+    def create_participation(user_id: int, direction_id: str) -> Optional[UserTestParticipation]:
+        """
+        TUZATILDI: Kunlik test cheklovi qo'shildi — har user kuniga faqat 1 marta test yechadi.
+        """
         db = Session()
-        test_session = TestService.get_or_create_test_session()
-        deadline = datetime.utcnow() + timedelta(minutes=config.TEST_DURATION_MINUTES)
-        participation = UserTestParticipation(
-            user_id=user_id,
-            test_session_id=test_session.id,
-            direction_id=direction_id,
-            status='active',
-            started_at=datetime.utcnow(),
-            deadline_at=deadline,
-        )
-        db.add(participation)
-        db.commit()
-        p_id = participation.id
-        db.close()
+        try:
+            today = datetime.utcnow().date()
+            # Bugun bu user test yechganmi tekshirish
+            existing_today = db.query(UserTestParticipation).filter(
+                UserTestParticipation.user_id == user_id,
+                func.date(UserTestParticipation.started_at) == today,
+                UserTestParticipation.status.in_(['active', 'completed'])
+            ).first()
+            if existing_today:
+                return None  # Kunlik cheklov buzildi
+
+            test_session = TestService.get_or_create_test_session()
+            deadline = datetime.utcnow() + timedelta(minutes=config.TEST_DURATION_MINUTES)
+            participation = UserTestParticipation(
+                user_id=user_id,
+                test_session_id=test_session.id,
+                direction_id=direction_id,
+                status='active',
+                started_at=datetime.utcnow(),
+                deadline_at=deadline,
+            )
+            db.add(participation)
+            db.commit()
+            p_id = participation.id
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
         db2 = Session()
-        result = db2.query(UserTestParticipation).filter(
-            UserTestParticipation.id == p_id
-        ).first()
-        db2.close()
-        return result
+        try:
+            result = db2.query(UserTestParticipation).filter(
+                UserTestParticipation.id == p_id
+            ).first()
+            return result
+        finally:
+            db2.close()
 
     @staticmethod
     def get_active_participation(user_id: int) -> Optional[UserTestParticipation]:
@@ -372,12 +392,11 @@ class TestService:
                 correct_count=correct_count,
                 total_questions=total_count
             ))
-            db.add(Leaderboard(
-                test_session_id=participation.test_session_id,
-                user_id=participation.user_id,
-                rank=0,
-                total_score=score_val
-            ))
+
+            # Direction-based leaderboard yaratish
+            direction_id = participation.direction_id
+            TestService._update_direction_leaderboard(participation.test_session_id, direction_id, score_val, participation.user_id)
+
             db.commit()
 
             return {
@@ -411,6 +430,116 @@ class TestService:
         finally:
             db.close()
 
+    @staticmethod
+    def _update_direction_leaderboard(test_session_id: int, direction_id: str, score_val: float, user_id: int):
+        """
+        Direction-based leaderboard yangilash: daily, weekly, all_time
+        """
+        db = Session()
+        try:
+            today = datetime.utcnow().date()
+            week_start = today - timedelta(days=today.weekday())  # Monday
+
+            # Daily leaderboard
+            daily_scores = (
+                db.query(Score)
+                .join(UserTestParticipation, Score.participation_id == UserTestParticipation.id)
+                .join(User, Score.user_id == User.id)
+                .filter(
+                    User.direction_id == direction_id,
+                    func.date(UserTestParticipation.completed_at) == today,
+                    UserTestParticipation.status == 'completed'
+                )
+                .order_by(Score.score.desc())
+                .all()
+            )
+            for rank, s in enumerate(daily_scores, 1):
+                lb = db.query(Leaderboard).filter(
+                    Leaderboard.user_id == s.user_id,
+                    Leaderboard.direction_id == direction_id,
+                    Leaderboard.period == 'daily',
+                    func.date(Leaderboard.timestamp) == today
+                ).first()
+                if not lb:
+                    lb = Leaderboard(
+                        test_session_id=test_session_id,
+                        user_id=s.user_id,
+                        direction_id=direction_id,
+                        period='daily',
+                        total_score=s.score,
+                        timestamp=datetime.utcnow()
+                    )
+                    db.add(lb)
+                lb.rank = rank
+                lb.total_score = s.score
+
+            # Weekly leaderboard
+            weekly_scores = (
+                db.query(Score)
+                .join(UserTestParticipation, Score.participation_id == UserTestParticipation.id)
+                .join(User, Score.user_id == User.id)
+                .filter(
+                    User.direction_id == direction_id,
+                    func.date(UserTestParticipation.completed_at) >= week_start,
+                    UserTestParticipation.status == 'completed'
+                )
+                .order_by(Score.score.desc())
+                .all()
+            )
+            for rank, s in enumerate(weekly_scores, 1):
+                lb = db.query(Leaderboard).filter(
+                    Leaderboard.user_id == s.user_id,
+                    Leaderboard.direction_id == direction_id,
+                    Leaderboard.period == 'weekly',
+                    func.date(Leaderboard.timestamp) >= week_start
+                ).first()
+                if not lb:
+                    lb = Leaderboard(
+                        test_session_id=test_session_id,
+                        user_id=s.user_id,
+                        direction_id=direction_id,
+                        period='weekly',
+                        total_score=s.score,
+                        timestamp=datetime.utcnow()
+                    )
+                    db.add(lb)
+                lb.rank = rank
+                lb.total_score = s.score
+
+            # All-time leaderboard
+            all_time_scores = (
+                db.query(Score)
+                .join(User, Score.user_id == User.id)
+                .filter(User.direction_id == direction_id)
+                .order_by(Score.score.desc())
+                .all()
+            )
+            for rank, s in enumerate(all_time_scores, 1):
+                lb = db.query(Leaderboard).filter(
+                    Leaderboard.user_id == s.user_id,
+                    Leaderboard.direction_id == direction_id,
+                    Leaderboard.period == 'all_time'
+                ).first()
+                if not lb:
+                    lb = Leaderboard(
+                        test_session_id=test_session_id,
+                        user_id=s.user_id,
+                        direction_id=direction_id,
+                        period='all_time',
+                        total_score=s.score,
+                        timestamp=datetime.utcnow()
+                    )
+                    db.add(lb)
+                lb.rank = rank
+                lb.total_score = s.score
+
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"Leaderboard update error: {e}")
+        finally:
+            db.close()
+
     # ─────────────────────────────────────────────────────────────
     # Leaderboard
     # ─────────────────────────────────────────────────────────────
@@ -425,31 +554,40 @@ class TestService:
             db.close()
 
     @staticmethod
-    def get_direction_leaderboard(direction_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+    def get_direction_leaderboard(direction_id: str, period: str = 'daily', limit: int = 10) -> List[Dict[str, Any]]:
         """
-        TUZATILDI: db.close() dan keyin score.user ishlatilardi → DetachedInstanceError.
-        Endi dict list qaytaradi — ORM ob'ektlari emas.
+        Direction va period bo'yicha leaderboard.
+        period: 'daily', 'weekly', 'all_time'
         """
         db = Session()
         try:
-            scores = (
-                db.query(Score)
-                .join(User, Score.user_id == User.id)
-                .filter(User.direction_id == direction_id)
-                .options(joinedload(Score.user))
-                .order_by(Score.score.desc())
-                .limit(limit)
-                .all()
+            today = datetime.utcnow().date()
+            week_start = today - timedelta(days=today.weekday())
+
+            query = (
+                db.query(Leaderboard)
+                .join(User, Leaderboard.user_id == User.id)
+                .filter(
+                    Leaderboard.direction_id == direction_id,
+                    Leaderboard.period == period
+                )
+                .options(joinedload(Leaderboard.user))
             )
-            # Session yopilishidan oldin dict ga o'tkazamiz
+
+            if period == 'daily':
+                query = query.filter(func.date(Leaderboard.timestamp) == today)
+            elif period == 'weekly':
+                query = query.filter(Leaderboard.timestamp >= week_start)
+
+            scores = query.order_by(Leaderboard.rank).limit(limit).all()
+
             result = []
-            for s in scores:
-                u = s.user
+            for lb in scores:
+                u = lb.user
                 result.append({
-                    'score':      s.score,
-                    'correct':    s.correct_count,
-                    'total':      s.total_questions,
-                    'user_id':    s.user_id,
+                    'rank':       lb.rank,
+                    'score':      lb.total_score,
+                    'user_id':    lb.user_id,
                     'first_name': u.first_name if u else '—',
                     'last_name':  u.last_name  if u else '',
                 })

@@ -161,11 +161,14 @@ class Leaderboard(Base):
     id              = Column(Integer, primary_key=True)
     test_session_id = Column(Integer, ForeignKey('test_sessions.id'), nullable=False)
     user_id         = Column(Integer, ForeignKey('users.id'), nullable=False)
+    direction_id    = Column(String(10), ForeignKey('directions.id'), nullable=False)
     rank            = Column(Integer, nullable=False)
     total_score     = Column(Float, nullable=False)
+    period          = Column(String(20), default='daily')  # daily, weekly, all_time
     timestamp       = Column(DateTime, default=datetime.utcnow)
     test_session    = relationship("TestSession", back_populates="leaderboard")
     user            = relationship("User", back_populates="leaderboard_entries")
+    direction       = relationship("Direction")
 
 
 class Score(Base):

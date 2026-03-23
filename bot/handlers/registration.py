@@ -285,7 +285,82 @@ async def process_confirmation(callback_query: types.CallbackQuery, state: FSMCo
             db.close()
 
 
-# ─── Test boshlash ────────────────────────────────────────────────────────────
+@router.message(UserMainMenuStates.main_menu, F.text == "🏆 Reyting")
+async def show_leaderboard(message: types.Message, state: FSMContext):
+    user = get_user_by_telegram_id(message.from_user.id)
+    if not user:
+        await message.answer("❌ Ro'yxatdan o'ting!")
+        return
+
+    if not user.direction_id:
+        await message.answer(
+            "❗ <b>Yo'nalish tanlang!</b>\n\n"
+            "Reytingni ko'rish uchun avval ta'lim yo'nalishingizni belgilang.",
+            parse_mode="HTML"
+        )
+        return
+
+    # Period tanlash
+    period_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📅 Kunlik", callback_data="leaderboard_daily")],
+        [InlineKeyboardButton(text="📊 Haftalik", callback_data="leaderboard_weekly")],
+        [InlineKeyboardButton(text="🏆 Barcha vaqt", callback_data="leaderboard_all_time")],
+    ])
+    await message.answer(
+        "🏆 <b>Reytingni tanlang</b>\n\n"
+        f"Yo'nalish: <b>{user.direction.name_uz}</b>",
+        reply_markup=period_kb, parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data.startswith("leaderboard_"))
+async def handle_leaderboard_period(callback_query: types.CallbackQuery, state: FSMContext):
+    period_map = {
+        "leaderboard_daily": "daily",
+        "leaderboard_weekly": "weekly",
+        "leaderboard_all_time": "all_time"
+    }
+    period = period_map.get(callback_query.data)
+    if not period:
+        return
+
+    user = get_user_by_telegram_id(callback_query.from_user.id)
+    if not user or not user.direction_id:
+        await callback_query.answer("❌ Xato!", show_alert=True)
+        return
+
+    leaderboard = TestService.get_direction_leaderboard(user.direction_id, period, limit=10)
+
+    if not leaderboard:
+        text = "📊 <b>Reyting hali mavjud emas</b>\n\nBu davrda test yechganlar yo'q."
+    else:
+        period_names = {
+            "daily": "Kunlik",
+            "weekly": "Haftalik",
+            "all_time": "Barcha vaqt"
+        }
+        text = f"🏆 <b>{period_names[period]} Reyting</b>\n📚 {user.direction.name_uz}\n\n"
+        for entry in leaderboard:
+            medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(entry['rank'], f"{entry['rank']}.")
+            name = f"{entry['first_name']} {entry['last_name'] or ''}".strip()
+            text += f"{medal} {name} — {entry['score']:.1f} ball\n"
+
+        # Userning o'rni
+        user_rank = None
+        for entry in leaderboard:
+            if entry['user_id'] == user.id:
+                user_rank = entry['rank']
+                break
+
+        if user_rank:
+            text += f"\n👤 <b>Sizning o'rningiz: {user_rank}</b>"
+        else:
+            text += f"\n👤 Siz hali {period_names[period].lower()} reytingda emassiz"
+
+    try:
+        await callback_query.message.edit_text(text, parse_mode="HTML")
+    except Exception:
+        await callback_query.message.answer(text, parse_mode="HTML")
 
 @router.message(UserMainMenuStates.main_menu, F.text == "🧪 Testni boshlash")
 async def start_test_button(message: types.Message, state: FSMContext, bot: Bot):
@@ -461,6 +536,28 @@ async def handle_force_new_test(callback_query: types.CallbackQuery, state: FSMC
 
 
 async def _show_test_confirmation(message: types.Message, state: FSMContext, user: User):
+    """
+    TUZATILDI: Kunlik test cheklovi qo'shildi.
+    """
+    from datetime import datetime
+    db = Session()
+    today = datetime.utcnow().date()
+    existing_today = db.query(UserTestParticipation).filter(
+        UserTestParticipation.user_id == user.id,
+        func.date(UserTestParticipation.started_at) == today,
+        UserTestParticipation.status.in_(['active', 'completed'])
+    ).first()
+    db.close()
+
+    if existing_today:
+        await message.answer(
+            "⏰ <b>Bugun allaqachon test yechgansiz!</b>\n\n"
+            "Har kuni faqat <b>1 marta</b> test yechish mumkin.\n"
+            "Ertaga qayta urinib ko'ring! 🚀",
+            parse_mode="HTML"
+        )
+        return
+
     if user.direction:
         s1, s2 = _get_direction_subject_names(user.direction)
         direction_line = (
@@ -584,6 +681,13 @@ async def confirm_test_start(callback_query: types.CallbackQuery,
 
         try:
             participation = TestService.create_participation(user.id, user.direction_id)
+
+            if not participation:
+                await callback_query.answer(
+                    "❌ Kunlik test limiti tugagan! Ertaga qayta urinib ko'ring.", show_alert=True
+                )
+                return
+
             questions     = TestService.get_test_questions(user.direction_id)
 
             if not questions:
@@ -1101,12 +1205,14 @@ async def handle_any_direction_chosen(message: types.Message, state: FSMContext)
     if user_db:
         user_db.direction_id = direction_id
         db.commit()
+
+    direction_name = direction.name_uz
     db.close()
 
     current_state = await state.get_state()
     user          = get_user_by_telegram_id(message.from_user.id)
     await message.answer(
-        f"✅ Yo'nalish: <b>{direction.name_uz}</b>", parse_mode="HTML"
+        f"✅ Yo'nalish: <b>{direction_name}</b>", parse_mode="HTML"
     )
     if current_state in (
         TestSessionStates.waiting_for_direction,

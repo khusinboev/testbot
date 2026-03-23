@@ -241,15 +241,21 @@ def delete_user(user_id):
         participations = db.query(UserTestParticipation).filter(
             UserTestParticipation.user_id == user_id
         ).all()
-        for p in participations:
-            db.query(UserAnswer).filter(UserAnswer.participation_id == p.id).delete()
+        participation_ids = [p.id for p in participations]
+
+        if participation_ids:
+            # Must delete the scores that reference participations before deleting participations
+            db.query(Score).filter(Score.participation_id.in_(participation_ids)).delete(synchronize_session=False)
+            db.query(UserAnswer).filter(UserAnswer.participation_id.in_(participation_ids)).delete(synchronize_session=False)
+
+        # delete remaining user-specific records
+        db.query(Score).filter(Score.user_id == user_id).delete(synchronize_session=False)
+        db.query(Leaderboard).filter(Leaderboard.user_id == user_id).delete(synchronize_session=False)
+        db.query(UserAnswer).filter(UserAnswer.user_id == user_id).delete(synchronize_session=False)
         db.query(UserTestParticipation).filter(
             UserTestParticipation.user_id == user_id
-        ).delete()
-        db.query(Score).filter(Score.user_id == user_id).delete()
-        db.query(Leaderboard).filter(Leaderboard.user_id == user_id).delete()
-        db.query(UserAnswer).filter(UserAnswer.user_id == user_id).delete()
-        db.query(User).filter(User.id == user_id).delete()
+        ).delete(synchronize_session=False)
+        db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
         db.commit()
         return jsonify({'success': True})
     except Exception as e:
@@ -484,31 +490,42 @@ def test_detail(session_id):
 def leaderboard():
     db = get_db()
     try:
-        from database.models import Score, User, Direction
+        from database.models import Leaderboard, User, Direction
         from sqlalchemy.orm import joinedload
 
         page             = request.args.get('page', 1, type=int)
         direction_filter = request.args.get('direction', '').strip()
+        period_filter    = request.args.get('period', 'all_time')  # daily, weekly, all_time
         per_page         = 25
 
-        query = db.query(Score).options(joinedload(Score.user))
+        query = db.query(Leaderboard).options(
+            joinedload(Leaderboard.user),
+            joinedload(Leaderboard.direction)
+        ).filter(Leaderboard.period == period_filter)
+
         if direction_filter:
-            query = query.join(User, Score.user_id == User.id).filter(
-                User.direction_id == direction_filter
-            )
+            query = query.filter(Leaderboard.direction_id == direction_filter)
 
         total  = query.count()
-        scores = query.order_by(desc(Score.score)) \
-                      .offset((page - 1) * per_page) \
-                      .limit(per_page).all()
+        entries = query.order_by(Leaderboard.rank) \
+                       .offset((page - 1) * per_page) \
+                       .limit(per_page).all()
 
         directions  = db.query(Direction).order_by(Direction.name_uz).all()
         total_pages = (total + per_page - 1) // per_page
 
+        period_names = {
+            'daily': 'Kunlik',
+            'weekly': 'Haftalik',
+            'all_time': 'Barcha vaqt'
+        }
+
         return render_template('leaderboard.html',
-            scores=scores,
+            entries=entries,
             directions=directions,
             direction_filter=direction_filter,
+            period_filter=period_filter,
+            period_names=period_names,
             total=total,
             page=page,
             total_pages=total_pages,

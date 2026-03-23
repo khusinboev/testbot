@@ -126,7 +126,7 @@ def seed_regions_and_districts():
         # TUZATILDI: __file__ = .../database/db.py
         # dirname(abspath(__file__)) = .../database/
         # dirname(dirname(...))      = loyiha ildizi  ← TO'G'RI
-        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        base = os.path.dirname(os.path.abspath(__file__))
 
         for r in _load_json(os.path.join(base, 'regions.json')):
             db.add(Region(id=int(r['id']), name_uz=r['name_uz'],

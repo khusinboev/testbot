@@ -344,6 +344,14 @@
        class="nav-item {% if request.endpoint in ['users','user_detail'] %}active{% endif %}">
       <span class="icon">👥</span> Foydalanuvchilar
     </a>
+    <a href="{{ url_for('tests') }}"
+       class="nav-item {% if request.endpoint in ['tests','test_detail'] %}active{% endif %}">
+      <span class="icon">🧪</span> Testlar
+    </a>
+    <a href="{{ url_for('questions') }}"
+       class="nav-item {% if request.endpoint == 'questions' %}active{% endif %}">
+      <span class="icon">❓</span> Savollar
+    </a>
     <a href="{{ url_for('leaderboard') }}"
        class="nav-item {% if request.endpoint == 'leaderboard' %}active{% endif %}">
       <span class="icon">🏆</span> Reyting
