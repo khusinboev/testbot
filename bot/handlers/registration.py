@@ -23,8 +23,20 @@ from utils.test_service import TestService
 from utils.locks import user_lock, is_processing, throttle_check
 from sqlalchemy.orm import joinedload
 import re
+import logging
+import traceback
 
+logger = logging.getLogger(__name__)
 router = Router()
+
+
+def _err(e: Exception) -> str:
+    """callback_query.answer() uchun xato xabarini qisqartiradi (max 180 belgi).
+    Asosiy xatoni konsolga to'liq chiqaradi."""
+    msg = str(e)
+    logger.error("Handler xato:\n%s", traceback.format_exc())
+    short = msg[:150].replace('\n', ' ')
+    return f"❌ Xato: {short}"
 
 
 # ─── Yordamchi funksiyalar ───────────────────────────────────────────────────
@@ -236,7 +248,7 @@ async def process_confirmation(callback_query: types.CallbackQuery, state: FSMCo
             await show_main_menu(callback_query.message, state, user)
         except Exception as e:
             db.rollback()
-            await callback_query.answer(f"❌ Xato: {str(e)}", show_alert=True)
+            await callback_query.answer(_err(e), show_alert=True)
         finally:
             db.close()
 
@@ -428,7 +440,8 @@ async def confirm_test_start(callback_query: types.CallbackQuery, state: FSMCont
             )
             await state.set_state(TestSessionStates.test_active)
         except Exception as e:
-            await callback_query.answer(f"❌ Xato: {str(e)}", show_alert=True)
+            logger.error("confirm_test_start xato: %s", traceback.format_exc())
+            await callback_query.answer(_err(e), show_alert=True)
 
 
 @router.callback_query(TestSessionStates.test_confirmation, F.data == "test_cancel")
@@ -611,7 +624,7 @@ async def show_my_results(message: types.Message, state: FSMContext):
             )
         await message.answer(result_text, parse_mode="HTML")
     except Exception as e:
-        await message.answer(f"❌ Xato: {str(e)}")
+        logger.error("Xato: %s", traceback.format_exc()); await message.answer(f"❌ Ichki xato yuz berdi. Logni tekshiring.")
     finally:
         db.close()
 
@@ -634,7 +647,7 @@ async def show_leaderboard(message: types.Message, state: FSMContext):
             )
         await message.answer(text, parse_mode="HTML")
     except Exception as e:
-        await message.answer(f"❌ Xato: {str(e)}")
+        logger.error("Xato: %s", traceback.format_exc()); await message.answer(f"❌ Ichki xato yuz berdi. Logni tekshiring.")
     finally:
         db.close()
 
@@ -687,7 +700,7 @@ async def show_profile(message: types.Message, state: FSMContext):
         )
         await message.answer(text, reply_markup=get_profile_settings_keyboard(), parse_mode="HTML")
     except Exception as e:
-        await message.answer(f"❌ Xato: {str(e)}")
+        logger.error("Xato: %s", traceback.format_exc()); await message.answer(f"❌ Ichki xato yuz berdi. Logni tekshiring.")
     finally:
         db.close()
 
@@ -737,7 +750,7 @@ async def profile_edit_name_save(message: types.Message, state: FSMContext):
         await show_profile(message, state)
     except Exception as e:
         db.rollback()
-        await message.answer(f"❌ Xato: {str(e)}")
+        logger.error("Xato: %s", traceback.format_exc()); await message.answer(f"❌ Ichki xato yuz berdi. Logni tekshiring.")
     finally:
         db.close()
 

@@ -81,7 +81,7 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     telegram_id = Column(Integer, unique=True, nullable=False)
     first_name = Column(String(255), nullable=False)
-    last_name = Column(String(255), nullable=False)
+    last_name = Column(String(255), nullable=True)
     phone = Column(String(20), nullable=False)
     region_id = Column(Integer, ForeignKey('regions.id'), nullable=False)
     district_id = Column(Integer, ForeignKey('districts.id'), nullable=False)
