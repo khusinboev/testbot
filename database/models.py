@@ -11,10 +11,10 @@ Base = declarative_base()
 
 class Region(Base):
     __tablename__ = 'regions'
-    id       = Column(Integer, primary_key=True)
-    name_uz  = Column(String(255), nullable=False)
-    name_oz  = Column(String(255), nullable=False)
-    name_ru  = Column(String(255), nullable=False)
+    id        = Column(Integer, primary_key=True)
+    name_uz   = Column(String(255), nullable=False)
+    name_oz   = Column(String(255), nullable=False)
+    name_ru   = Column(String(255), nullable=False)
     districts = relationship("District", back_populates="region")
     users     = relationship("User", back_populates="region")
 
@@ -32,26 +32,26 @@ class District(Base):
 
 class Direction(Base):
     __tablename__ = 'directions'
-    id         = Column(String(10), primary_key=True)
-    name_uz    = Column(String(255), nullable=False)
-    name_oz    = Column(String(255), nullable=False)
-    name_ru    = Column(String(255), nullable=False)
+    id          = Column(String(10), primary_key=True)
+    name_uz     = Column(String(255), nullable=False)
+    name_oz     = Column(String(255), nullable=False)
+    name_ru     = Column(String(255), nullable=False)
     subject1_id = Column(Integer, ForeignKey('subjects.id'), nullable=False)
     subject2_id = Column(Integer, ForeignKey('subjects.id'), nullable=False)
-    subject1   = relationship("Subject", foreign_keys=[subject1_id])
-    subject2   = relationship("Subject", foreign_keys=[subject2_id])
-    users      = relationship("User", back_populates="direction")
+    subject1    = relationship("Subject", foreign_keys=[subject1_id])
+    subject2    = relationship("Subject", foreign_keys=[subject2_id])
+    users       = relationship("User", back_populates="direction")
 
 
 class Subject(Base):
     __tablename__ = 'subjects'
-    id                    = Column(Integer, primary_key=True)
-    name_uz               = Column(String(255), nullable=False)
-    name_oz               = Column(String(255), nullable=False)
-    name_ru               = Column(String(255), nullable=False)
-    question_count        = Column(Integer, default=0)
-    points_per_question   = Column(Float, default=1.0)
-    questions             = relationship("Question", back_populates="subject")
+    id                     = Column(Integer, primary_key=True)
+    name_uz                = Column(String(255), nullable=False)
+    name_oz                = Column(String(255), nullable=False)
+    name_ru                = Column(String(255), nullable=False)
+    question_count         = Column(Integer, default=0)
+    points_per_question    = Column(Float, default=1.0)
+    questions              = relationship("Question", back_populates="subject")
     directions_as_subject1 = relationship(
         "Direction", foreign_keys=[Direction.subject1_id], overlaps="subject1"
     )
@@ -91,27 +91,28 @@ class User(Base):
     is_blocked   = Column(Boolean, default=False)
     created_at   = Column(DateTime, default=datetime.utcnow)
 
-    region              = relationship("Region", back_populates="users")
+    region              = relationship("Region",   back_populates="users")
     district            = relationship("District", back_populates="users")
     direction           = relationship("Direction", back_populates="users")
     test_participations = relationship("UserTestParticipation", back_populates="user")
     answers             = relationship("UserAnswer", back_populates="user")
     leaderboard_entries = relationship("Leaderboard", back_populates="user")
+    scores              = relationship("Score", back_populates="user")
 
 
 class TestSession(Base):
     __tablename__ = 'test_sessions'
-    id                  = Column(Integer, primary_key=True)
-    admin_id            = Column(Integer, ForeignKey('admins.id'), nullable=False)
-    exam_date           = Column(DateTime, nullable=False)
-    start_time          = Column(DateTime, nullable=False)
-    duration_minutes    = Column(Integer, default=180)
-    status              = Column(String(20), default='scheduled')
-    allowed_directions  = Column(JSON)
-    created_at          = Column(DateTime, default=datetime.utcnow)
-    admin               = relationship("Admin", back_populates="test_sessions")
-    participations      = relationship("UserTestParticipation", back_populates="test_session")
-    leaderboard         = relationship("Leaderboard", back_populates="test_session")
+    id                 = Column(Integer, primary_key=True)
+    admin_id           = Column(Integer, ForeignKey('admins.id'), nullable=False)
+    exam_date          = Column(DateTime, nullable=False)
+    start_time         = Column(DateTime, nullable=False)
+    duration_minutes   = Column(Integer, default=180)
+    status             = Column(String(20), default='scheduled')
+    allowed_directions = Column(JSON)
+    created_at         = Column(DateTime, default=datetime.utcnow)
+    admin              = relationship("Admin", back_populates="test_sessions")
+    participations     = relationship("UserTestParticipation", back_populates="test_session")
+    leaderboard        = relationship("Leaderboard", back_populates="test_session")
 
 
 class UserTestParticipation(Base):
@@ -123,12 +124,11 @@ class UserTestParticipation(Base):
     joined_at       = Column(DateTime, default=datetime.utcnow)
     started_at      = Column(DateTime, nullable=True)
     completed_at    = Column(DateTime, nullable=True)
-    deadline_at     = Column(DateTime, nullable=True)   # vaqt chegarasi
+    deadline_at     = Column(DateTime, nullable=True)
     status          = Column(String(20), default='joined')
-    # FSM state snapshot — botni restart qilishda davom ettirish uchun
-    snapshot_questions     = Column(JSON, nullable=True)   # savollar ro'yxati
+    snapshot_questions     = Column(JSON, nullable=True)
     snapshot_current_index = Column(Integer, default=0)
-    snapshot_answers       = Column(JSON, nullable=True)   # {str(index): letter}
+    snapshot_answers       = Column(JSON, nullable=True)
 
     user         = relationship("User", back_populates="test_participations")
     test_session = relationship("TestSession", back_populates="participations")
@@ -141,19 +141,19 @@ class UserAnswer(Base):
     __table_args__ = (
         UniqueConstraint('participation_id', 'question_id', name='uq_participation_question'),
     )
-    id              = Column(Integer, primary_key=True)
-    user_id         = Column(Integer, ForeignKey('users.id'), nullable=False)
-    test_session_id = Column(Integer, ForeignKey('test_sessions.id'), nullable=False)
+    id               = Column(Integer, primary_key=True)
+    user_id          = Column(Integer, ForeignKey('users.id'), nullable=False)
+    test_session_id  = Column(Integer, ForeignKey('test_sessions.id'), nullable=False)
     participation_id = Column(Integer, ForeignKey('user_test_participation.id'), nullable=False)
-    question_id     = Column(Integer, ForeignKey('questions.id'), nullable=False)
-    selected_answer = Column(String(1), nullable=True)
-    is_correct      = Column(Boolean, nullable=True)
-    submitted_at    = Column(DateTime, default=datetime.utcnow)
+    question_id      = Column(Integer, ForeignKey('questions.id'), nullable=False)
+    selected_answer  = Column(String(1), nullable=True)
+    is_correct       = Column(Boolean, nullable=True)
+    submitted_at     = Column(DateTime, default=datetime.utcnow)
 
-    user         = relationship("User", back_populates="answers")
-    test_session = relationship("TestSession")
+    user          = relationship("User", back_populates="answers")
+    test_session  = relationship("TestSession")
     participation = relationship("UserTestParticipation", back_populates="answers")
-    question     = relationship("Question", back_populates="answers")
+    question      = relationship("Question", back_populates="answers")
 
 
 class Leaderboard(Base):
@@ -170,14 +170,15 @@ class Leaderboard(Base):
 
 class Score(Base):
     __tablename__ = 'scores'
-    id              = Column(Integer, primary_key=True)
-    user_id         = Column(Integer, ForeignKey('users.id'), nullable=False)
+    id               = Column(Integer, primary_key=True)
+    user_id          = Column(Integer, ForeignKey('users.id'), nullable=False)
     participation_id = Column(Integer, ForeignKey('user_test_participation.id'), nullable=True)
-    score           = Column(Float, nullable=False)
-    correct_count   = Column(Integer, nullable=False)
-    total_questions = Column(Integer, nullable=False)
-    created_at      = Column(DateTime, default=datetime.utcnow)
-    user            = relationship("User")
+    score            = Column(Float, nullable=False)
+    correct_count    = Column(Integer, nullable=False)
+    total_questions  = Column(Integer, nullable=False)
+    created_at       = Column(DateTime, default=datetime.utcnow)
+    # TUZATILDI: back_populates qo'shildi — User.scores bilan mos
+    user             = relationship("User", back_populates="scores")
 
 
 class Admin(Base):
@@ -191,28 +192,26 @@ class Admin(Base):
 
 
 class MandatoryChannel(Base):
-    """Majburiy obuna kanallari."""
     __tablename__ = 'mandatory_channels'
-    id            = Column(Integer, primary_key=True)
-    channel_id    = Column(String(100), unique=True, nullable=False)  # @username yoki -1001234
-    channel_name  = Column(String(255), nullable=False)
-    invite_link   = Column(String(512), nullable=True)   # inline tugma havolasi
-    is_active     = Column(Boolean, default=True)
-    created_at    = Column(DateTime, default=datetime.utcnow)
+    id           = Column(Integer, primary_key=True)
+    channel_id   = Column(String(100), unique=True, nullable=False)
+    channel_name = Column(String(255), nullable=False)
+    invite_link  = Column(String(512), nullable=True)
+    is_active    = Column(Boolean, default=True)
+    created_at   = Column(DateTime, default=datetime.utcnow)
 
 
 class BroadcastMessage(Base):
-    """Broadcast yuborish tarixi."""
     __tablename__ = 'broadcast_messages'
-    id            = Column(Integer, primary_key=True)
-    admin_id      = Column(Integer, ForeignKey('admins.id'), nullable=True)
-    message_type  = Column(String(20), default='text')   # 'text' | 'forward'
-    content       = Column(Text, nullable=True)          # matn xabari
-    forward_from_chat = Column(String(100), nullable=True)   # kanal username
-    forward_message_id = Column(BigInteger, nullable=True)   # post ID
-    target        = Column(String(20), default='all')    # 'all' | count
-    sent_count    = Column(Integer, default=0)
-    fail_count    = Column(Integer, default=0)
-    status        = Column(String(20), default='pending')  # pending|sending|done|failed
-    created_at    = Column(DateTime, default=datetime.utcnow)
-    finished_at   = Column(DateTime, nullable=True)
+    id                 = Column(Integer, primary_key=True)
+    admin_id           = Column(Integer, ForeignKey('admins.id'), nullable=True)
+    message_type       = Column(String(20), default='text')
+    content            = Column(Text, nullable=True)
+    forward_from_chat  = Column(String(100), nullable=True)
+    forward_message_id = Column(BigInteger, nullable=True)
+    target             = Column(String(20), default='all')
+    sent_count         = Column(Integer, default=0)
+    fail_count         = Column(Integer, default=0)
+    status             = Column(String(20), default='pending')
+    created_at         = Column(DateTime, default=datetime.utcnow)
+    finished_at        = Column(DateTime, nullable=True)

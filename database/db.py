@@ -1,21 +1,23 @@
 """
 database/db.py
-StaticPool o'chirildi — PostgreSQL bilan mos emas edi.
+
+TUZATILDI:
+  1. seed_regions_and_districts() — base path xato edi:
+       database/db.py → dirname → database/ → dirname → loyiha ildizi ✅
+  2. StaticPool PostgreSQL bilan mos emas → to'g'ri pool
 """
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 import config
 
-# PostgreSQL uchun to'g'ri connection pool
-engine_kwargs = {
-    'pool_pre_ping': True,      # ulanish tirikligini tekshirish
+engine_kwargs: dict = {
+    'pool_pre_ping': True,
     'pool_size': 10,
     'max_overflow': 20,
     'pool_timeout': 30,
-    'pool_recycle': 1800,       # 30 minutda connection yangilash
+    'pool_recycle': 1800,
 }
 
-# SQLite uchun (test muhitida)
 if config.DATABASE_URL.startswith('sqlite'):
     from sqlalchemy.pool import StaticPool
     engine_kwargs = {
@@ -24,7 +26,6 @@ if config.DATABASE_URL.startswith('sqlite'):
     }
 
 engine = create_engine(config.DATABASE_URL, **engine_kwargs)
-
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Session = scoped_session(SessionLocal)
 
@@ -121,7 +122,12 @@ def seed_regions_and_districts():
         if db.query(Region).first():
             print("Viloyatlar allaqachon bor, o'tkazildi")
             return
-        base = os.path.dirname(os.path.abspath(__file__))
+
+        # TUZATILDI: __file__ = .../database/db.py
+        # dirname(abspath(__file__)) = .../database/
+        # dirname(dirname(...))      = loyiha ildizi  ← TO'G'RI
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
         for r in _load_json(os.path.join(base, 'regions.json')):
             db.add(Region(id=int(r['id']), name_uz=r['name_uz'],
                           name_oz=r['name_oz'], name_ru=r['name_ru']))
