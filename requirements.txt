@@ -1,0 +1,11 @@
+aiogram==3.3.0
+psycopg2-binary==2.9.7
+sqlalchemy==2.0.23
+flask==3.0.0
+apscheduler==3.10.4
+openpyxl==3.1.2
+pandas==2.1.4
+python-dotenv==1.0.0
+alembic==1.12.1
+pypdf2==3.0.1
+pytz==2023.3

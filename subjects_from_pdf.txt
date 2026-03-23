@@ -1,0 +1,217 @@
+(ijodiy imtihon)  Chet tili
+(ijodiy imtihon)  Kasbiy (ijodiy imtihon)
+-axborot
+-kosmetika
+-muhit
+-ovqat
+-qidiruv
+-sabzavotchilik
+-teleoperatorlik
+Biologiya
+Biologiya  Kimyo
+Biologiya  Ona tili va adabiyoti
+Chet tili
+Fizika
+Fizika  Matematika
+Geografiya
+Huquqshunoslik
+Kasbiy
+Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)
+Kasbiy (ijodiy) imtihon
+Kimyo
+Kimyo  Biologiya
+Kimyo  Matematika
+Matematika
+Matematika  Chet tili
+Matematika  Fizika
+Ona tili va adabiyoti
+Ona tili va adabiyoti  Chet tili
+Ona tili va adabiyoti  Matematika
+Tarix
+Tarix  Chet tili
+aholi yashash joylarini koʻkalamzorlashtirish  Biologiya  Kimyo
+aloqa
+aloqasi
+asbobsozlik  Fizika  Matematika
+atrof -muhit muhofazasi  Kimyo  Biologiya
+bioresurslari
+bonitirovkasi
+boshqarish
+boshqarish  Fizika  Chet tili
+boshqarish  Matematika  Chet tili
+chuqur
+ekinlari seleksiyasi va urugʻchiligi  Biologiya  Kimyo
+ekspertizasi  Biologiya  Kimyo
+elektr
+etnologiya  Tarix  Geografiya
+fanlari  Chet tili
+faoliyati
+faoliyati  Matematika  Ona tili va adabiyoti
+farmatsevtikasi
+farmatsiyasi
+gaz ishi  Fizika  Matematika
+geoinformatika  Matematika  Fizika
+geotexnika muhandisligi  Matematika  Fizika
+gʻoya,
+hamshiralik
+harakatini
+harakatni
+harbiy
+himoyasi
+hisobi
+ijodiyoti
+ijrochiligi
+infratuzilmani
+injiniring
+injiniringi
+inshootlari
+intellekt
+iqlimshunoslik  Matematika  Geografiya
+iqtisodiyoti
+ish
+ishi
+ishi  Biologiya  Kimyo
+ishi  Kimyo  Biologiya
+ishlari texnikasi va texnologiyasi  Matematika  Fizika
+jamiyat boshqaruvi  Tarix  Chet tili
+jismoniy
+kadastri
+kemalarining
+kommunikatsiyalari
+konlari geologiyasi, qidiruv va razvedkasi  Fizika  Matematika
+lingvistikasi
+logopediya  Biologiya  Ona tili va adabiyoti
+mahsulotlari texnologiyasi  Kimyo  Biologiya
+mahsulotlarini saqlash va qayta ishlash texnologiyasi  Kimyo  Biologiya
+mashinalar
+masofadan zondlash  Matematika  Geografiya
+matematik modellashtirish  Matematika  Fizika
+matematika
+maʼnaviyat asoslari va huquq taʼlimi  Tarix  Ona tili va adabiyoti
+meditsinasi
+mehmondoʻstlik  Tarix  Chet tili
+menejmenti va madaniy turizm  Tarix  Ona tili va adabiyoti
+mexanikasi  Fizika  Matematika
+mexanizatsiyalashtirish  Matematika  Fizika
+moliyaviy texnologiyalar  Matematika  Chet tili
+muhandisligi
+muhandisligi  Kimyo  Biologiya
+muhandisligi  Matematika  Fizika
+muhandislik geologiyasi  Fizika  Matematika
+muhandislik tizimlari  Matematika  Fizika
+muhofazasi
+munosabatlar
+muzey
+nazariyasi
+neft -gazni qayta ishlash texnologiyasi  Kimyo  Matematika
+olegofrenopedagogika  Biologiya  Ona tili va adabiyoti
+oʻsimliklarni
+parvoz ekspluatatsiyasi  Fizika  Chet tili
+pedagogika:
+predmetlari ekspertizasi, konservatsiyalash va
+profilaktika
+qadoqlash muhandisligi  Kimyo  Matematika
+qayta ishlash texnologiyasi  Kimyo  Matematika
+qazilma
+qurilish va ekspluatatsiyasi  Matematika  Fizika
+qurilishi
+qurilmalar
+radioaktiv metallar rudalarini qazib olish, qayta ishlash
+rekonstruksiyasi va restavratsiyasi  Matematika  Ona tili va adabiyoti
+resurslarini
+robototexnika  Fizika  Matematika
+sanitariya
+sanoat
+sanʼat
+sanʼati
+seysmometriya  Matematika  Geografiya
+soliqqa tortish  Matematika  Chet tili
+standartlashtirish  Fizika  Matematika
+surdopedagogika  Biologiya  Ona tili va adabiyoti
+surdotarjimonlik faoliyati  Kasbiy (ijodiy imtihon)  Ona tili va adabiyoti
+tarbiya va sport  Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)
+tashkil etish  Matematika  Fizika
+tashkil etish va boshqarish  Matematika  Fizika
+taʼlim
+taʼlim  Kasbiy (ijodiy) imtihon  Kasbiy (ijodiy) imtihon
+taʼlimi
+taʼminoti
+texnologiyalar
+texnologiyalari
+texnologiyasi  Kimyo  Biologiya
+texnologiyasi  Matematika  Fizika
+tibbiyot
+tiflopedagogika  Biologiya  Ona tili va adabiyoti
+til
+tili
+tillarni oʻqitish: arab tili  Chet tili  Ona tili va adabiyoti
+tillarni oʻqitish: dariy tili  Chet tili  Ona tili va adabiyoti
+tillarni oʻqitish: fors tili  Chet tili  Ona tili va adabiyoti
+tillarni oʻqitish: fransuz tili  Fransuz tili  Ona tili va adabiyoti
+tillarni oʻqitish: indonez tili  Chet tili  Ona tili va adabiyoti
+tillarni oʻqitish: ingliz tili  Ingliz tili  Ona tili va adabiyoti
+tillarni oʻqitish: ispan tili  Chet tili  Ona tili va adabiyoti
+tillarni oʻqitish: italyan tili  Chet tili  Ona tili va adabiyoti
+tillarni oʻqitish: koreys tili  Chet tili  Ona tili va adabiyoti
+tillarni oʻqitish: malay tili  Chet tili  Ona tili va adabiyoti
+tillarni oʻqitish: nemis tili
+tillarni oʻqitish: oʻzbek tili  Oʻzbek tili va adabiyoti  Chet tili
+tillarni oʻqitish: qoraqalpoq tili  Qoraqalpoq tili va
+tillarni oʻqitish: qozoq tili  Qozoq tili va adabiyoti  Chet tili
+tillarni oʻqitish: rus tili  Rus tili va adabiyoti  Chet tili
+tillarni oʻqitish: tojik tili  Tojik tili va adabiyoti  Chet tili
+tillarni oʻqitish: turk tili  Chet tili  Ona tili va adabiyoti
+tillarni oʻqitish: turkman tili  Turkman tili va
+tillarni oʻqitish: urdu tili  Chet tili  Ona tili va adabiyoti
+tillarni oʻqitish: uygʻur tili  Chet tili  Ona tili va adabiyoti
+tillarni oʻqitish: xitoy tili  Chet tili  Ona tili va adabiyoti
+tillarni oʻqitish: yapon tili  Chet tili  Ona tili va adabiyoti
+tizimlari
+tuproqshunoslik  Biologiya  Kimyo
+tutchilik  Biologiya  Kimyo
+va
+va adabiyoti  Oʻzbek tili va adabiyoti  Chet tili
+va adabiyoti: fransuz tili  Fransuz tili  Ona tili va adabiyoti
+va adabiyoti: ingliz tili  Ingliz tili  Ona tili va adabiyoti
+va adabiyoti: koreys tili  Chet tili  Ona tili va adabiyoti
+va adabiyoti: nemis tili  Nemis tili  Ona tili va adabiyoti
+va adabiyoti: qirgʻiz tili  Qirgʻiz tili va adabiyoti  Tarix
+va adabiyoti: qoraqalpoq tili  Qoraqalpoq tili va
+va adabiyoti: qozoq tili  Qozoq tili va adabiyoti  Tarix
+va adabiyoti: rus tili  Rus tili va adabiyoti  Tarix
+va adabiyoti: tojik tili  Tojik tili va adabiyoti  Tarix
+va adabiyoti: turkman tili  Turkman tili va
+va akvakultura  Biologiya  Kimyo
+va amaliyoti: arab tili  Chet tili  Ona tili va adabiyoti
+va amaliyoti: fransuz tili  Fransuz tili  Ona tili va adabiyoti
+va amaliyoti: ingliz tili  Ingliz tili  Ona tili va adabiyoti
+va amaliyoti: italyan tili  Chet tili  Ona tili va adabiyoti
+va amaliyoti: koreys tili  Chet tili  Ona tili va adabiyoti
+va amaliyoti: nemis tili  Nemis tili  Ona tili va adabiyoti
+va amaliyoti: rus tili  Rus tili  Oʻzbek tili va
+va amaliyoti: turk tili  Chet tili  Ona tili va adabiyoti
+va amaliyoti: xitoy tili  Chet tili Ona tili va adabiyoti
+va jihozlar  Matematika  Fizika
+va jihozlar: yogʻochga ishlov berish
+va karantini  Kimyo  Biologiya
+va koʻchmas mulkni boshqarish  Matematika  Fizika
+va loyihalash  Matematika  Fizika
+va melioratsiya  Matematika  Fizika
+va muhandislik grafikasi  Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)
+va nasos stansiyalaridan foydalanish  Matematika  Fizika
+va teleradioeshittirish injiniringi  Matematika  Fizika
+va texnika xavfsizligi  Matematika  Fizika
+va texnologiyalari  Matematika  Fizika
+va tizimlar  Matematika  Fizika
+va uzumchilik  Biologiya  Kimyo
+va xalqaro iqtisodiy munosabatlar  Matematika  Chet tili
+va yer degradatsiyasi  Biologiya  Kimyo
+va yer tuzish  Matematika  Fizika
+vositalari
+xavfsizligi
+xavfsizligi  Matematika  Fizika
+xoʻjaligi
+xoʻjaligini
+xoʻjalik
+yetishtirish va qayta ishlash texnologiyasi  Biologiya  Kimyo
+yodgorliklari

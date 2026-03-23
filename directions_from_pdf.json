@@ -1,0 +1,1472 @@
+[
+  {
+    "num": "1",
+    "code": "60110100",
+    "name": "Pedagogika",
+    "subject1": "Tarix",
+    "subject2": "Ona tili va adabiyoti"
+  },
+  {
+    "num": "2",
+    "code": "60110200",
+    "name": "Maktabgacha",
+    "subject1": "taʼlim",
+    "subject2": "Biologiya  Ona tili va adabiyoti"
+  },
+  {
+    "num": "3",
+    "code": "60110300",
+    "name": "Maxsus",
+    "subject1": "pedagogika:",
+    "subject2": "logopediya  Biologiya  Ona tili va adabiyoti"
+  },
+  {
+    "num": "4",
+    "code": "60110300",
+    "name": "Maxsus",
+    "subject1": "pedagogika:",
+    "subject2": "olegofrenopedagogika  Biologiya  Ona tili va adabiyoti"
+  },
+  {
+    "num": "5",
+    "code": "60110300",
+    "name": "Maxsus",
+    "subject1": "pedagogika:",
+    "subject2": "surdopedagogika  Biologiya  Ona tili va adabiyoti"
+  },
+  {
+    "num": "6",
+    "code": "60110300",
+    "name": "Maxsus",
+    "subject1": "pedagogika:",
+    "subject2": "surdotarjimonlik faoliyati  Kasbiy (ijodiy imtihon)  Ona tili va adabiyoti"
+  },
+  {
+    "num": "7",
+    "code": "60110300",
+    "name": "Maxsus",
+    "subject1": "pedagogika:",
+    "subject2": "tiflopedagogika  Biologiya  Ona tili va adabiyoti"
+  },
+  {
+    "num": "8",
+    "code": "60110400",
+    "name": "Boshlangʻich",
+    "subject1": "taʼlim",
+    "subject2": "Ona tili va adabiyoti  Matematika"
+  },
+  {
+    "num": "9",
+    "code": "60110700",
+    "name": "Oʻzbek",
+    "subject1": "tili",
+    "subject2": "va adabiyoti  Oʻzbek tili va adabiyoti  Chet tili"
+  },
+  {
+    "num": "10",
+    "code": "60110800",
+    "name": "Ona",
+    "subject1": "tili",
+    "subject2": "va adabiyoti: rus tili  Rus tili va adabiyoti  Tarix"
+  },
+  {
+    "num": "11",
+    "code": "60110800",
+    "name": "Ona",
+    "subject1": "tili",
+    "subject2": "va adabiyoti: qirgʻiz tili  Qirgʻiz tili va adabiyoti  Tarix"
+  },
+  {
+    "num": "12",
+    "code": "60110800",
+    "name": "Ona",
+    "subject1": "tili",
+    "subject2": "va adabiyoti: qozoq tili  Qozoq tili va adabiyoti  Tarix"
+  },
+  {
+    "num": "13",
+    "code": "60110800",
+    "name": "Ona adabiyoti  Tarix",
+    "subject1": "tili",
+    "subject2": "va adabiyoti: qoraqalpoq tili  Qoraqalpoq tili va"
+  },
+  {
+    "num": "14",
+    "code": "60110800",
+    "name": "Ona adabiyoti  Tarix",
+    "subject1": "tili",
+    "subject2": "va adabiyoti: turkman tili  Turkman tili va"
+  },
+  {
+    "num": "15",
+    "code": "60110800",
+    "name": "Ona",
+    "subject1": "tili",
+    "subject2": "va adabiyoti: tojik tili  Tojik tili va adabiyoti  Tarix"
+  },
+  {
+    "num": "16",
+    "code": "60110900",
+    "name": "Xorijiy",
+    "subject1": "til",
+    "subject2": "va adabiyoti: ingliz tili  Ingliz tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "17",
+    "code": "60110900",
+    "name": "Xorijiy",
+    "subject1": "til",
+    "subject2": "va adabiyoti: nemis tili  Nemis tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "18",
+    "code": "60110900",
+    "name": "Xorijiy",
+    "subject1": "til",
+    "subject2": "va adabiyoti: fransuz tili  Fransuz tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "19",
+    "code": "60110900",
+    "name": "Xorijiy",
+    "subject1": "til",
+    "subject2": "va adabiyoti: koreys tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "20",
+    "code": "60111100",
+    "name": "Milliy",
+    "subject1": "gʻoya,",
+    "subject2": "maʼnaviyat asoslari va huquq taʼlimi  Tarix  Ona tili va adabiyoti"
+  },
+  {
+    "num": "22",
+    "code": "60210300",
+    "name": "Muzeyshunoslik:",
+    "subject1": "muzey",
+    "subject2": "menejmenti va madaniy turizm  Tarix  Ona tili va adabiyoti"
+  },
+  {
+    "num": "23",
+    "code": "60210300",
+    "name": "Muzeyshunoslik: taʼmirlash  Tarix  Ona tili va adabiyoti",
+    "subject1": "muzey",
+    "subject2": "predmetlari ekspertizasi, konservatsiyalash va"
+  },
+  {
+    "num": "24",
+    "code": "60211800",
+    "name": "Madaniyatshunoslik",
+    "subject1": "Tarix",
+    "subject2": "Ona tili va adabiyoti"
+  },
+  {
+    "num": "25",
+    "code": "60220100",
+    "name": "Dinshunoslik",
+    "subject1": "Tarix",
+    "subject2": "Kasbiy (ijodiy) imtihon"
+  },
+  {
+    "num": "26",
+    "code": "60220200",
+    "name": "Islomshunoslik",
+    "subject1": "Tarix",
+    "subject2": "Kasbiy (ijodiy) imtihon"
+  },
+  {
+    "num": "27",
+    "code": "60220300",
+    "name": "Tarix",
+    "subject1": "Tarix",
+    "subject2": "Geografiya"
+  },
+  {
+    "num": "28",
+    "code": "60220400",
+    "name": "Arxeologiya",
+    "subject1": "Tarix",
+    "subject2": "Geografiya"
+  },
+  {
+    "num": "29",
+    "code": "60220500",
+    "name": "Falsafa",
+    "subject1": "Tarix",
+    "subject2": "Ona tili va adabiyoti"
+  },
+  {
+    "num": "30",
+    "code": "60220600",
+    "name": "Antropologiya",
+    "subject1": "va",
+    "subject2": "etnologiya  Tarix  Geografiya"
+  },
+  {
+    "num": "31",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: ingliz tili  Ingliz tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "32",
+    "code": "60230100",
+    "name": "Filologiya Nemis tili  Ona tili va adabiyoti",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: nemis tili"
+  },
+  {
+    "num": "33",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: fransuz tili  Fransuz tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "34",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: ispan tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "35",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: xitoy tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "36",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: yapon tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "37",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: koreys tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "38",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: arab tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "39",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: turk tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "40",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: rus tili  Rus tili va adabiyoti  Chet tili"
+  },
+  {
+    "num": "41",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: oʻzbek tili  Oʻzbek tili va adabiyoti  Chet tili"
+  },
+  {
+    "num": "42",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: dariy tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "43",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: indonez tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "44",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: urdu tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "45",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: fors tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "47",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: malay tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "48",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: uygʻur tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "49",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: tojik tili  Tojik tili va adabiyoti  Chet tili"
+  },
+  {
+    "num": "50",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: qozoq tili  Qozoq tili va adabiyoti  Chet tili"
+  },
+  {
+    "num": "51",
+    "code": "60230100",
+    "name": "Filologiya adabiyoti  Chet tili",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: qoraqalpoq tili  Qoraqalpoq tili va"
+  },
+  {
+    "num": "52",
+    "code": "60230100",
+    "name": "Filologiya adabiyoti  Chet tili",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: turkman tili  Turkman tili va"
+  },
+  {
+    "num": "53",
+    "code": "60230100",
+    "name": "Filologiya",
+    "subject1": "va",
+    "subject2": "tillarni oʻqitish: italyan tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "54",
+    "code": "60230200",
+    "name": "Tarjima",
+    "subject1": "nazariyasi",
+    "subject2": "va amaliyoti: ingliz tili  Ingliz tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "55",
+    "code": "60230200",
+    "name": "Tarjima",
+    "subject1": "nazariyasi",
+    "subject2": "va amaliyoti: nemis tili  Nemis tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "56",
+    "code": "60230200",
+    "name": "Tarjima",
+    "subject1": "nazariyasi",
+    "subject2": "va amaliyoti: fransuz tili  Fransuz tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "57",
+    "code": "60230200",
+    "name": "Tarjima",
+    "subject1": "nazariyasi",
+    "subject2": "va amaliyoti: italyan tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "58",
+    "code": "60230200",
+    "name": "Tarjima",
+    "subject1": "nazariyasi",
+    "subject2": "va amaliyoti: arab tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "59",
+    "code": "60230200",
+    "name": "Tarjima",
+    "subject1": "nazariyasi",
+    "subject2": "va amaliyoti: turk tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "60",
+    "code": "60230200",
+    "name": "Tarjima",
+    "subject1": "nazariyasi",
+    "subject2": "va amaliyoti: koreys tili  Chet tili  Ona tili va adabiyoti"
+  },
+  {
+    "num": "61",
+    "code": "60230200",
+    "name": "Tarjima adabiyoti",
+    "subject1": "nazariyasi",
+    "subject2": "va amaliyoti: rus tili  Rus tili  Oʻzbek tili va"
+  },
+  {
+    "num": "62",
+    "code": "60230200",
+    "name": "Tarjima",
+    "subject1": "nazariyasi",
+    "subject2": "va amaliyoti: xitoy tili  Chet tili Ona tili va adabiyoti"
+  },
+  {
+    "num": "63",
+    "code": "60230300",
+    "name": "Noshirlik",
+    "subject1": "ishi",
+    "subject2": "Ona tili va adabiyoti  Chet tili"
+  },
+  {
+    "num": "64",
+    "code": "60230400",
+    "name": "Kompyuter",
+    "subject1": "lingvistikasi",
+    "subject2": "Ona tili va adabiyoti  Matematika"
+  },
+  {
+    "num": "65",
+    "code": "60310100",
+    "name": "Siyosatshunoslik",
+    "subject1": "Tarix",
+    "subject2": "Chet tili"
+  },
+  {
+    "num": "66",
+    "code": "60310200",
+    "name": "Xalqaro",
+    "subject1": "munosabatlar",
+    "subject2": "Tarix  Chet tili"
+  },
+  {
+    "num": "67",
+    "code": "60310300",
+    "name": "Psixologiya",
+    "subject1": "Biologiya",
+    "subject2": "Ona tili va adabiyoti"
+  },
+  {
+    "num": "68",
+    "code": "60310400",
+    "name": "Sotsiologiya",
+    "subject1": "Matematika",
+    "subject2": "Ona tili va adabiyoti"
+  },
+  {
+    "num": "69",
+    "code": "60320100",
+    "name": "Jurnalistika",
+    "subject1": "Kasbiy",
+    "subject2": "(ijodiy imtihon)  Chet tili"
+  },
+  {
+    "num": "71",
+    "code": "60320300",
+    "name": "Arxivshunoslik",
+    "subject1": "Tarix",
+    "subject2": "Matematika"
+  },
+  {
+    "num": "72",
+    "code": "60320400",
+    "name": "Kutubxona",
+    "subject1": "-axborot",
+    "subject2": "faoliyati  Matematika  Ona tili va adabiyoti"
+  },
+  {
+    "num": "73",
+    "code": "60410100",
+    "name": "Iqtisodiyot",
+    "subject1": "Matematika",
+    "subject2": "Chet tili"
+  },
+  {
+    "num": "74",
+    "code": "60410200",
+    "name": "Buxgalteriya",
+    "subject1": "hisobi",
+    "subject2": "Matematika  Chet tili"
+  },
+  {
+    "num": "75",
+    "code": "60410300",
+    "name": "Soliqlar",
+    "subject1": "va",
+    "subject2": "soliqqa tortish  Matematika  Chet tili"
+  },
+  {
+    "num": "77",
+    "code": "60410500",
+    "name": "Moliya",
+    "subject1": "va",
+    "subject2": "moliyaviy texnologiyalar  Matematika  Chet tili"
+  },
+  {
+    "num": "78",
+    "code": "60410600",
+    "name": "Bank",
+    "subject1": "ishi",
+    "subject2": "Matematika  Chet tili"
+  },
+  {
+    "num": "79",
+    "code": "60410700",
+    "name": "Statistika",
+    "subject1": "Matematika",
+    "subject2": "Chet tili"
+  },
+  {
+    "num": "80",
+    "code": "60410800",
+    "name": "Menejment",
+    "subject1": "Matematika",
+    "subject2": "Chet tili"
+  },
+  {
+    "num": "81",
+    "code": "60410900",
+    "name": "Biznesni",
+    "subject1": "boshqarish",
+    "subject2": "Matematika  Chet tili"
+  },
+  {
+    "num": "82",
+    "code": "60411000",
+    "name": "Inson",
+    "subject1": "resurslarini",
+    "subject2": "boshqarish  Matematika  Chet tili"
+  },
+  {
+    "num": "83",
+    "code": "60411100",
+    "name": "Jahon",
+    "subject1": "iqtisodiyoti",
+    "subject2": "va xalqaro iqtisodiy munosabatlar  Matematika  Chet tili"
+  },
+  {
+    "num": "84",
+    "code": "60411200",
+    "name": "Marketing",
+    "subject1": "Matematika",
+    "subject2": "Chet tili"
+  },
+  {
+    "num": "85",
+    "code": "60411300",
+    "name": "Savdo",
+    "subject1": "ishi",
+    "subject2": "Matematika  Chet tili"
+  },
+  {
+    "num": "86",
+    "code": "60411400",
+    "name": "Mamlakatshunoslik",
+    "subject1": "Matematika",
+    "subject2": "Chet tili"
+  },
+  {
+    "num": "87",
+    "code": "60420100",
+    "name": "Yurisprudensiya",
+    "subject1": "Huquqshunoslik",
+    "subject2": "fanlari  Chet tili"
+  },
+  {
+    "num": "88",
+    "code": "60420200",
+    "name": "Davlat",
+    "subject1": "va",
+    "subject2": "jamiyat boshqaruvi  Tarix  Chet tili"
+  },
+  {
+    "num": "89",
+    "code": "60510100",
+    "name": "Biologiya",
+    "subject1": "Biologiya",
+    "subject2": "Kimyo"
+  },
+  {
+    "num": "90",
+    "code": "60520100",
+    "name": "Meteorologiya",
+    "subject1": "va",
+    "subject2": "iqlimshunoslik  Matematika  Geografiya"
+  },
+  {
+    "num": "91",
+    "code": "60520200",
+    "name": "Ekologiya",
+    "subject1": "va",
+    "subject2": "atrof -muhit muhofazasi  Kimyo  Biologiya"
+  },
+  {
+    "num": "92",
+    "code": "60530100",
+    "name": "Kimyo",
+    "subject1": "Kimyo",
+    "subject2": "Matematika"
+  },
+  {
+    "num": "93",
+    "code": "60530200",
+    "name": "Geografiya",
+    "subject1": "Geografiya",
+    "subject2": "Matematika"
+  },
+  {
+    "num": "94",
+    "code": "60530300",
+    "name": "Geologiya",
+    "subject1": "Matematika",
+    "subject2": "Fizika"
+  },
+  {
+    "num": "95",
+    "code": "60530400",
+    "name": "Gidrologiya",
+    "subject1": "Matematika",
+    "subject2": "Geografiya"
+  },
+  {
+    "num": "97",
+    "code": "60530600",
+    "name": "Mexanika",
+    "subject1": "va",
+    "subject2": "matematik modellashtirish  Matematika  Fizika"
+  },
+  {
+    "num": "98",
+    "code": "60530700",
+    "name": "Astronomiya",
+    "subject1": "Fizika",
+    "subject2": "Matematika"
+  },
+  {
+    "num": "99",
+    "code": "60530800",
+    "name": "Seysmologiya",
+    "subject1": "va",
+    "subject2": "seysmometriya  Matematika  Geografiya"
+  },
+  {
+    "num": "100",
+    "code": "60540100",
+    "name": "Matematika",
+    "subject1": "Matematika",
+    "subject2": "Fizika"
+  },
+  {
+    "num": "101",
+    "code": "60540200",
+    "name": "Amaliy",
+    "subject1": "matematika",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "102",
+    "code": "60610100",
+    "name": "Axborot",
+    "subject1": "tizimlari",
+    "subject2": "va texnologiyalari  Matematika  Fizika"
+  },
+  {
+    "num": "103",
+    "code": "60610200",
+    "name": "Axborot",
+    "subject1": "xavfsizligi",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "104",
+    "code": "60610300",
+    "name": "Kompyuter",
+    "subject1": "injiniringi",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "105",
+    "code": "60610400",
+    "name": "Dasturiy",
+    "subject1": "injiniring",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "106",
+    "code": "60610500",
+    "name": "Sunʼiy",
+    "subject1": "intellekt",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "107",
+    "code": "60610600",
+    "name": "Telekommunikatsiya",
+    "subject1": "texnologiyalari",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "108",
+    "code": "60610700",
+    "name": "Televizion",
+    "subject1": "texnologiyalar",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "109",
+    "code": "60610800",
+    "name": "Pochta",
+    "subject1": "aloqasi",
+    "subject2": "texnologiyasi  Matematika  Fizika"
+  },
+  {
+    "num": "110",
+    "code": "60610900",
+    "name": "Radioelektron",
+    "subject1": "qurilmalar",
+    "subject2": "va tizimlar  Matematika  Fizika"
+  },
+  {
+    "num": "111",
+    "code": "60611000",
+    "name": "Simsiz",
+    "subject1": "aloqa",
+    "subject2": "va teleradioeshittirish injiniringi  Matematika  Fizika"
+  },
+  {
+    "num": "112",
+    "code": "60611100",
+    "name": "Infokommunikatsiya",
+    "subject1": "injiniringi",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "113",
+    "code": "60611200",
+    "name": "Kiberxavfsizlik",
+    "subject1": "injiniringi",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "114",
+    "code": "60710100",
+    "name": "Kimyo",
+    "subject1": "muhandisligi",
+    "subject2": "Kimyo  Matematika"
+  },
+  {
+    "num": "115",
+    "code": "60710200",
+    "name": "Biotexnologiya",
+    "subject1": "Biologiya",
+    "subject2": "Kimyo"
+  },
+  {
+    "num": "116",
+    "code": "60710300",
+    "name": "Matbaa",
+    "subject1": "va",
+    "subject2": "qadoqlash muhandisligi  Kimyo  Matematika"
+  },
+  {
+    "num": "117",
+    "code": "60710400",
+    "name": "Energetika",
+    "subject1": "muhandisligi",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "118",
+    "code": "60710500",
+    "name": "Elektr",
+    "subject1": "muhandisligi",
+    "subject2": "Fizika  Matematika"
+  },
+  {
+    "num": "119",
+    "code": "60710600",
+    "name": "Gidroenergetika",
+    "subject1": "Matematika",
+    "subject2": "Fizika"
+  },
+  {
+    "num": "120",
+    "code": "60710700",
+    "name": "Elektronika",
+    "subject1": "va",
+    "subject2": "asbobsozlik  Fizika  Matematika"
+  },
+  {
+    "num": "121",
+    "code": "60710800",
+    "name": "Metrologiya",
+    "subject1": "va",
+    "subject2": "standartlashtirish  Fizika  Matematika"
+  },
+  {
+    "num": "123",
+    "code": "60711000",
+    "name": "Mexatronika",
+    "subject1": "va",
+    "subject2": "robototexnika  Fizika  Matematika"
+  },
+  {
+    "num": "124",
+    "code": "60711100",
+    "name": "Biotibbiyot",
+    "subject1": "muhandisligi",
+    "subject2": "Fizika  Matematika"
+  },
+  {
+    "num": "125",
+    "code": "60711200",
+    "name": "Metallurgiya",
+    "subject1": "muhandisligi",
+    "subject2": "Kimyo  Matematika"
+  },
+  {
+    "num": "126",
+    "code": "60711300",
+    "name": "Metallar",
+    "subject1": "texnologiyalari",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "127",
+    "code": "60711400",
+    "name": "Transport",
+    "subject1": "vositalari",
+    "subject2": "muhandisligi  Matematika  Fizika"
+  },
+  {
+    "num": "128",
+    "code": "60711500",
+    "name": "Aviatsiya",
+    "subject1": "muhandisligi",
+    "subject2": "Fizika  Matematika"
+  },
+  {
+    "num": "129",
+    "code": "60711600",
+    "name": "Kosmik",
+    "subject1": "texnologiyalar",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "130",
+    "code": "60711700",
+    "name": "Aerokosmik",
+    "subject1": "texnologiyalar",
+    "subject2": "Fizika  Matematika"
+  },
+  {
+    "num": "131",
+    "code": "60711800",
+    "name": "Atrof",
+    "subject1": "-muhit",
+    "subject2": "muhandisligi  Kimyo  Biologiya"
+  },
+  {
+    "num": "132",
+    "code": "60712300",
+    "name": "Mexanika",
+    "subject1": "muhandisligi",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "133",
+    "code": "60720100",
+    "name": "Oziq",
+    "subject1": "-ovqat",
+    "subject2": "texnologiyasi  Kimyo  Biologiya"
+  },
+  {
+    "num": "134",
+    "code": "60720200",
+    "name": "Parfyumeriya",
+    "subject1": "-kosmetika",
+    "subject2": "mahsulotlari texnologiyasi  Kimyo  Biologiya"
+  },
+  {
+    "num": "135",
+    "code": "60720300",
+    "name": "Materialshunoslik",
+    "subject1": "Kimyo",
+    "subject2": "Matematika"
+  },
+  {
+    "num": "136",
+    "code": "60720400",
+    "name": "Texnologik",
+    "subject1": "mashinalar",
+    "subject2": "va jihozlar  Matematika  Fizika"
+  },
+  {
+    "num": "137",
+    "code": "60720400",
+    "name": "Texnologik texnologiyasi  Matematika  Fizika",
+    "subject1": "mashinalar",
+    "subject2": "va jihozlar: yogʻochga ishlov berish"
+  },
+  {
+    "num": "138",
+    "code": "60720500",
+    "name": "Gazni",
+    "subject1": "chuqur",
+    "subject2": "qayta ishlash texnologiyasi  Kimyo  Matematika"
+  },
+  {
+    "num": "139",
+    "code": "60720600",
+    "name": "Neft",
+    "subject1": "va",
+    "subject2": "neft -gazni qayta ishlash texnologiyasi  Kimyo  Matematika"
+  },
+  {
+    "num": "140",
+    "code": "60720700",
+    "name": "Yengil",
+    "subject1": "sanoat",
+    "subject2": "muhandisligi  Matematika  Fizika"
+  },
+  {
+    "num": "141",
+    "code": "60720800",
+    "name": "Konchilik",
+    "subject1": "ishi",
+    "subject2": "Fizika  Matematika"
+  },
+  {
+    "num": "142",
+    "code": "60720900",
+    "name": "Foydali",
+    "subject1": "qazilma",
+    "subject2": "konlari geologiyasi, qidiruv va razvedkasi  Fizika  Matematika"
+  },
+  {
+    "num": "143",
+    "code": "60721000",
+    "name": "Gidrogeologiya",
+    "subject1": "va",
+    "subject2": "muhandislik geologiyasi  Fizika  Matematika"
+  },
+  {
+    "num": "144",
+    "code": "60721100",
+    "name": "Neft",
+    "subject1": "va",
+    "subject2": "gaz ishi  Fizika  Matematika"
+  },
+  {
+    "num": "145",
+    "code": "60721200",
+    "name": "Konchilik",
+    "subject1": "elektr",
+    "subject2": "mexanikasi  Fizika  Matematika"
+  },
+  {
+    "num": "146",
+    "code": "60721300",
+    "name": "Geologiya",
+    "subject1": "-qidiruv",
+    "subject2": "ishlari texnikasi va texnologiyasi  Matematika  Fizika"
+  },
+  {
+    "num": "147",
+    "code": "60721400",
+    "name": "Noyob texnikasi va texnologiyasi  Kimyo  Matematika  7 T/r Yoʻnalish kodi  Bakalavriat taʼlim yoʻnalishlari nomi  1-fan 2-fan",
+    "subject1": "va",
+    "subject2": "radioaktiv metallar rudalarini qazib olish, qayta ishlash"
+  },
+  {
+    "num": "148",
+    "code": "60721500",
+    "name": "Geodeziya",
+    "subject1": "va",
+    "subject2": "geoinformatika  Matematika  Fizika"
+  },
+  {
+    "num": "149",
+    "code": "60721600",
+    "name": "Kartografiya",
+    "subject1": "va",
+    "subject2": "masofadan zondlash  Matematika  Geografiya"
+  },
+  {
+    "num": "150",
+    "code": "60721700",
+    "name": "Kadastr",
+    "subject1": "Matematika",
+    "subject2": "Fizika"
+  },
+  {
+    "num": "151",
+    "code": "60730100",
+    "name": "Arxitektura",
+    "subject1": "Matematika",
+    "subject2": "Ona tili va adabiyoti"
+  },
+  {
+    "num": "152",
+    "code": "60730200",
+    "name": "Kommunal",
+    "subject1": "infratuzilmani",
+    "subject2": "tashkil etish va boshqarish  Matematika  Fizika"
+  },
+  {
+    "num": "153",
+    "code": "60730300",
+    "name": "Qurilish",
+    "subject1": "muhandisligi",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "154",
+    "code": "60730400",
+    "name": "Muhandislik",
+    "subject1": "kommunikatsiyalari",
+    "subject2": "qurilish va ekspluatatsiyasi  Matematika  Fizika"
+  },
+  {
+    "num": "155",
+    "code": "60730500",
+    "name": "Yoʻl",
+    "subject1": "muhandisligi",
+    "subject2": "Matematika  Fizika"
+  },
+  {
+    "num": "156",
+    "code": "60730600",
+    "name": "Gidrotexnika",
+    "subject1": "va",
+    "subject2": "geotexnika muhandisligi  Matematika  Fizika"
+  },
+  {
+    "num": "157",
+    "code": "60730700",
+    "name": "Qiymat",
+    "subject1": "injiniringi",
+    "subject2": "va koʻchmas mulkni boshqarish  Matematika  Fizika"
+  },
+  {
+    "num": "158",
+    "code": "60730800",
+    "name": "Arxitektura",
+    "subject1": "yodgorliklari",
+    "subject2": "rekonstruksiyasi va restavratsiyasi  Matematika  Ona tili va adabiyoti"
+  },
+  {
+    "num": "159",
+    "code": "60730900",
+    "name": "Shahar",
+    "subject1": "qurilishi",
+    "subject2": "va loyihalash  Matematika  Fizika"
+  },
+  {
+    "num": "160",
+    "code": "60810100",
+    "name": "Qishloq",
+    "subject1": "xoʻjaligini",
+    "subject2": "mexanizatsiyalashtirish  Matematika  Fizika"
+  },
+  {
+    "num": "161",
+    "code": "60810200",
+    "name": "Agrokimyo",
+    "subject1": "va",
+    "subject2": "tuproqshunoslik  Biologiya  Kimyo"
+  },
+  {
+    "num": "162",
+    "code": "60810300",
+    "name": "Tuproq",
+    "subject1": "bonitirovkasi",
+    "subject2": "va yer degradatsiyasi  Biologiya  Kimyo"
+  },
+  {
+    "num": "163",
+    "code": "60810400",
+    "name": "Agronomiya",
+    "subject1": "Biologiya",
+    "subject2": "Kimyo"
+  },
+  {
+    "num": "164",
+    "code": "60810500",
+    "name": "Oʻsimliklar",
+    "subject1": "himoyasi",
+    "subject2": "va karantini  Kimyo  Biologiya"
+  },
+  {
+    "num": "165",
+    "code": "60810600",
+    "name": "Qishloq",
+    "subject1": "xoʻjaligi",
+    "subject2": "ekinlari seleksiyasi va urugʻchiligi  Biologiya  Kimyo"
+  },
+  {
+    "num": "166",
+    "code": "60810700",
+    "name": "Qishloq",
+    "subject1": "xoʻjalik",
+    "subject2": "mahsulotlarini saqlash va qayta ishlash texnologiyasi  Kimyo  Biologiya"
+  },
+  {
+    "num": "167",
+    "code": "60810800",
+    "name": "Zooinjeneriya",
+    "subject1": "Biologiya",
+    "subject2": "Kimyo"
+  },
+  {
+    "num": "168",
+    "code": "60810900",
+    "name": "Ipakchilik",
+    "subject1": "va",
+    "subject2": "tutchilik  Biologiya  Kimyo"
+  },
+  {
+    "num": "169",
+    "code": "60811000",
+    "name": "Meva",
+    "subject1": "-sabzavotchilik",
+    "subject2": "va uzumchilik  Biologiya  Kimyo"
+  },
+  {
+    "num": "170",
+    "code": "60811100",
+    "name": "Dorivor",
+    "subject1": "oʻsimliklarni",
+    "subject2": "yetishtirish va qayta ishlash texnologiyasi  Biologiya  Kimyo"
+  },
+  {
+    "num": "171",
+    "code": "60811200",
+    "name": "Suv",
+    "subject1": "xoʻjaligi",
+    "subject2": "va melioratsiya  Matematika  Fizika"
+  },
+  {
+    "num": "172",
+    "code": "60811300",
+    "name": "Gidrotexnika",
+    "subject1": "inshootlari",
+    "subject2": "va nasos stansiyalaridan foydalanish  Matematika  Fizika"
+  },
+  {
+    "num": "174",
+    "code": "60811500",
+    "name": "Suv",
+    "subject1": "taʼminoti",
+    "subject2": "muhandislik tizimlari  Matematika  Fizika"
+  },
+  {
+    "num": "175",
+    "code": "60811600",
+    "name": "Yer",
+    "subject1": "kadastri",
+    "subject2": "va yer tuzish  Matematika  Fizika"
+  },
+  {
+    "num": "176",
+    "code": "60820100",
+    "name": "Oʻrmonchilik",
+    "subject1": "va",
+    "subject2": "aholi yashash joylarini koʻkalamzorlashtirish  Biologiya  Kimyo"
+  },
+  {
+    "num": "177",
+    "code": "60830100",
+    "name": "Suv",
+    "subject1": "bioresurslari",
+    "subject2": "va akvakultura  Biologiya  Kimyo"
+  },
+  {
+    "num": "178",
+    "code": "60840100",
+    "name": "Veterinariya",
+    "subject1": "meditsinasi",
+    "subject2": "Biologiya  Kimyo"
+  },
+  {
+    "num": "179",
+    "code": "60840200",
+    "name": "Veterinariya",
+    "subject1": "farmatsevtikasi",
+    "subject2": "Biologiya  Kimyo"
+  },
+  {
+    "num": "180",
+    "code": "60840300",
+    "name": "Veterinariya",
+    "subject1": "sanitariya",
+    "subject2": "ekspertizasi  Biologiya  Kimyo"
+  },
+  {
+    "num": "181",
+    "code": "60910100",
+    "name": "Stomatologiya",
+    "subject1": "Biologiya",
+    "subject2": "Kimyo"
+  },
+  {
+    "num": "182",
+    "code": "60910200",
+    "name": "Davolash",
+    "subject1": "ishi",
+    "subject2": "Biologiya  Kimyo"
+  },
+  {
+    "num": "183",
+    "code": "60910300",
+    "name": "Pediatriya",
+    "subject1": "ishi",
+    "subject2": "Biologiya  Kimyo"
+  },
+  {
+    "num": "184",
+    "code": "60910400",
+    "name": "Tibbiy",
+    "subject1": "profilaktika",
+    "subject2": "ishi  Kimyo  Biologiya"
+  },
+  {
+    "num": "185",
+    "code": "60910600",
+    "name": "Oliy",
+    "subject1": "hamshiralik",
+    "subject2": "ishi  Biologiya  Kimyo"
+  },
+  {
+    "num": "186",
+    "code": "60910700",
+    "name": "Fundamental",
+    "subject1": "tibbiyot",
+    "subject2": "Kimyo  Biologiya"
+  },
+  {
+    "num": "187",
+    "code": "60910800",
+    "name": "Farmatsiya",
+    "subject1": "Kimyo",
+    "subject2": "Biologiya"
+  },
+  {
+    "num": "188",
+    "code": "60910900",
+    "name": "Sanoat",
+    "subject1": "farmatsiyasi",
+    "subject2": "Kimyo  Biologiya"
+  },
+  {
+    "num": "189",
+    "code": "60920100",
+    "name": "Ijtimoiy",
+    "subject1": "ish",
+    "subject2": "Biologiya  Ona tili va adabiyoti"
+  },
+  {
+    "num": "190",
+    "code": "61010100",
+    "name": "Turizm",
+    "subject1": "va",
+    "subject2": "mehmondoʻstlik  Tarix  Chet tili"
+  },
+  {
+    "num": "191",
+    "code": "61010400",
+    "name": "Logistika",
+    "subject1": "Matematika",
+    "subject2": "Chet tili"
+  },
+  {
+    "num": "192",
+    "code": "61020100",
+    "name": "Hayot",
+    "subject1": "faoliyati",
+    "subject2": "xavfsizligi  Matematika  Fizika"
+  },
+  {
+    "num": "193",
+    "code": "61020200",
+    "name": "Mehnat",
+    "subject1": "muhofazasi",
+    "subject2": "va texnika xavfsizligi  Matematika  Fizika"
+  },
+  {
+    "num": "194",
+    "code": "61040100",
+    "name": "Havodagi",
+    "subject1": "harakatni",
+    "subject2": "boshqarish  Fizika  Chet tili"
+  },
+  {
+    "num": "195",
+    "code": "61040200",
+    "name": "Yoʻl",
+    "subject1": "harakatini",
+    "subject2": "tashkil etish  Matematika  Fizika"
+  },
+  {
+    "num": "196",
+    "code": "61040300",
+    "name": "Havo",
+    "subject1": "kemalarining",
+    "subject2": "parvoz ekspluatatsiyasi  Fizika  Chet tili"
+  },
+  {
+    "num": "197",
+    "code": "60110500",
+    "name": "Tasviriy",
+    "subject1": "sanʼat",
+    "subject2": "va muhandislik grafikasi  Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "198",
+    "code": "60110600",
+    "name": "Musiqa",
+    "subject1": "taʼlimi",
+    "subject2": "Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "200",
+    "code": "60210100",
+    "name": "Texnogen",
+    "subject1": "sanʼat",
+    "subject2": "Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "201",
+    "code": "60210200",
+    "name": "Kino",
+    "subject1": "-teleoperatorlik",
+    "subject2": "Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "202",
+    "code": "60210400",
+    "name": "Dizayn",
+    "subject1": "Kasbiy",
+    "subject2": "(ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "203",
+    "code": "60210500",
+    "name": "Rangtasvir",
+    "subject1": "Kasbiy",
+    "subject2": "(ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "204",
+    "code": "60210600",
+    "name": "Grafika",
+    "subject1": "Kasbiy",
+    "subject2": "(ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "205",
+    "code": "60210700",
+    "name": "Haykaltaroshlik",
+    "subject1": "Kasbiy",
+    "subject2": "(ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "206",
+    "code": "60210800",
+    "name": "Amaliy",
+    "subject1": "sanʼat",
+    "subject2": "Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "207",
+    "code": "60210900",
+    "name": "Bastakorlik",
+    "subject1": "sanʼati",
+    "subject2": "Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "208",
+    "code": "60211000",
+    "name": "Sanʼatshunoslik",
+    "subject1": "Kasbiy",
+    "subject2": "(ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "209",
+    "code": "60211100",
+    "name": "Aktyorlik",
+    "subject1": "sanʼati",
+    "subject2": "Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "210",
+    "code": "60211200",
+    "name": "Rejissyorlik",
+    "subject1": "Kasbiy",
+    "subject2": "(ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "211",
+    "code": "60211300",
+    "name": "Dirijyorlik",
+    "subject1": "Kasbiy",
+    "subject2": "(ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "212",
+    "code": "60211400",
+    "name": "Vokal",
+    "subject1": "sanʼati",
+    "subject2": "Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "213",
+    "code": "60211500",
+    "name": "Cholgʻu",
+    "subject1": "ijrochiligi",
+    "subject2": "Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "214",
+    "code": "60211600",
+    "name": "Xoreografiya",
+    "subject1": "Kasbiy",
+    "subject2": "(ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "215",
+    "code": "60211700",
+    "name": "Xalq",
+    "subject1": "ijodiyoti",
+    "subject2": "Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "216",
+    "code": "61010200",
+    "name": "Sport",
+    "subject1": "faoliyati",
+    "subject2": "Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "217",
+    "code": "61010300",
+    "name": "Adaptiv",
+    "subject1": "jismoniy",
+    "subject2": "tarbiya va sport  Kasbiy (ijodiy imtihon)  Kasbiy (ijodiy imtihon)"
+  },
+  {
+    "num": "218",
+    "code": "60111000",
+    "name": "Chaqiriqqacha * Izoh:  Taʼlim yoʻnalishlari nomi oʻzgarganda, shuningdek, yangi yoʻnalishlar tashkil etilganda mos ravishda tegishli oʻzgartirishlar  kiritiladi.",
+    "subject1": "harbiy",
+    "subject2": "taʼlim  Kasbiy (ijodiy) imtihon  Kasbiy (ijodiy) imtihon"
+  }
+]
