@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, Float, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, Float, ForeignKey, JSON, BigInteger
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -79,7 +79,7 @@ class User(Base):
     __tablename__ = 'users'
     
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True, nullable=False)
+    telegram_id = Column(BigInteger, unique=True, nullable=False)
     first_name = Column(String(255), nullable=False)
     last_name = Column(String(255), nullable=True)
     phone = Column(String(20), nullable=False)
@@ -175,7 +175,7 @@ class Admin(Base):
     __tablename__ = 'admins'
     
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True, nullable=False)
+    telegram_id = Column(BigInteger, unique=True, nullable=False)
     role = Column(String(20), default='admin')  # super_admin, admin
     permissions_json = Column(JSON, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow)
