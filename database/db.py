@@ -1,15 +1,29 @@
+"""
+database/db.py
+StaticPool o'chirildi — PostgreSQL bilan mos emas edi.
+"""
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
-from sqlalchemy.pool import StaticPool
 import config
 
-engine = create_engine(
-    config.DATABASE_URL,
-    poolclass=StaticPool,
-    connect_args={
-        "check_same_thread": False,
-    } if config.DATABASE_URL.startswith('sqlite') else {}
-)
+# PostgreSQL uchun to'g'ri connection pool
+engine_kwargs = {
+    'pool_pre_ping': True,      # ulanish tirikligini tekshirish
+    'pool_size': 10,
+    'max_overflow': 20,
+    'pool_timeout': 30,
+    'pool_recycle': 1800,       # 30 minutda connection yangilash
+}
+
+# SQLite uchun (test muhitida)
+if config.DATABASE_URL.startswith('sqlite'):
+    from sqlalchemy.pool import StaticPool
+    engine_kwargs = {
+        'poolclass': StaticPool,
+        'connect_args': {'check_same_thread': False},
+    }
+
+engine = create_engine(config.DATABASE_URL, **engine_kwargs)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Session = scoped_session(SessionLocal)
@@ -77,7 +91,8 @@ def seed_subjects():
             (10, 'Rus tili',    'Rus tili',     'Русский язык',    2.1),
         ]
         for sid, uz, oz, ru, pts in subjects:
-            db.add(Subject(id=sid, name_uz=uz, name_oz=oz, name_ru=ru, points_per_question=pts))
+            db.add(Subject(id=sid, name_uz=uz, name_oz=oz, name_ru=ru,
+                           points_per_question=pts))
         db.commit()
         print(f"✅ {len(subjects)} ta fan qo'shildi")
     except Exception as e:
@@ -88,7 +103,6 @@ def seed_subjects():
 
 
 def _load_json(filepath: str) -> list:
-    """JSON faylni o'qiydi — utf-8, utf-8-sig yoki cp1251 encoding bilan."""
     import json
     for enc in ('utf-8', 'utf-8-sig', 'cp1251'):
         try:
@@ -102,23 +116,20 @@ def _load_json(filepath: str) -> list:
 def seed_regions_and_districts():
     import os
     from .models import Region, District
-
     db = Session()
     try:
         if db.query(Region).first():
             print("Viloyatlar allaqachon bor, o'tkazildi")
             return
-
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
         for r in _load_json(os.path.join(base, 'regions.json')):
             db.add(Region(id=int(r['id']), name_uz=r['name_uz'],
                           name_oz=r['name_oz'], name_ru=r['name_ru']))
         db.commit()
-
         for d in _load_json(os.path.join(base, 'districts.json')):
             db.add(District(id=int(d['id']), region_id=int(d['region_id']),
-                            name_uz=d['name_uz'], name_oz=d['name_oz'], name_ru=d['name_ru']))
+                            name_uz=d['name_uz'], name_oz=d['name_oz'],
+                            name_ru=d['name_ru']))
         db.commit()
         print("✅ Viloyat va tumanlar qo'shildi")
     except Exception as e:
@@ -131,24 +142,20 @@ def seed_regions_and_districts():
 def seed_directions_from_excel():
     from .models import Direction
     from utils.excel_parser import parse_directions_from_excel
-
     db = Session()
     try:
         if db.query(Direction).first():
             print("Yo'nalishlar allaqachon bor, o'tkazildi")
             return
-
         directions = parse_directions_from_excel()
         if not directions:
             print("❌ Yo'nalish ma'lumotlari topilmadi")
             return
-
         for d in directions:
             db.add(Direction(
                 id=d['code'], name_uz=d['name'], name_oz=d['name'], name_ru=d['name'],
                 subject1_id=d['subject1_id'], subject2_id=d['subject2_id'],
             ))
-
         db.commit()
         print(f"✅ {len(directions)} ta yo'nalish qo'shildi")
     except Exception as e:

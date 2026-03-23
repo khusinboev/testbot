@@ -1,0 +1,204 @@
+{% extends 'base.html' %}
+{% block title %}Kanallar — DTM Admin{% endblock %}
+{% block page_title %}📢 Majburiy kanallar{% endblock %}
+
+{% block content %}
+
+<!-- Qo'shish tugmasi -->
+<div class="flex justify-between items-center mb-4">
+  <div class="text-muted text-sm">Jami: <strong class="text-accent">{{ channels|length }}</strong> ta kanal</div>
+  <button class="btn btn-primary" onclick="openAddModal()">
+    ➕ Kanal qo'shish
+  </button>
+</div>
+
+<!-- Kanallar jadvali -->
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID / Username</th>
+          <th>Nomi</th>
+          <th>Havola (inline tugma)</th>
+          <th>Holat</th>
+          <th>Sana</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ch in channels %}
+        <tr>
+          <td class="font-mono text-sm">{{ ch.channel_id }}</td>
+          <td class="fw-700">{{ ch.channel_name }}</td>
+          <td>
+            {% if ch.invite_link %}
+            <a href="{{ ch.invite_link }}" target="_blank"
+               class="text-accent text-sm" style="word-break:break-all">
+              {{ ch.invite_link[:45] }}{% if ch.invite_link|length > 45 %}…{% endif %}
+            </a>
+            {% else %}
+            <span class="text-muted text-sm">Avtomatik</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if ch.is_active %}
+            <span class="badge badge-green">✅ Faol</span>
+            {% else %}
+            <span class="badge badge-gray">⏸ To'xtatilgan</span>
+            {% endif %}
+          </td>
+          <td class="text-muted text-xs">{{ ch.created_at.strftime('%d.%m.%Y') }}</td>
+          <td>
+            <div class="flex gap-2">
+              <button class="btn btn-ghost btn-sm"
+                      onclick="toggleChannel({{ ch.id }}, {{ 'false' if ch.is_active else 'true' }})">
+                {{ '⏸' if ch.is_active else '▶️' }}
+              </button>
+              <button class="btn btn-danger btn-sm"
+                      onclick="deleteChannel({{ ch.id }})">🗑</button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" style="text-align:center;padding:40px;color:var(--muted)">
+            Hali kanal qo'shilmagan
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card mt-4" style="border-color:rgba(79,110,247,.3)">
+  <div class="card-body" style="font-size:13px;color:var(--muted)">
+    <b style="color:var(--accent)">ℹ️ Kanal qo'shish bo'yicha ko'rsatma:</b><br><br>
+    1. <b>Kanal ID</b>: <code>@username</code> yoki raqamli ID (<code>-1001234567890</code>)<br>
+    2. Bot kanal <b>administratori</b> bo'lishi shart<br>
+    3. <b>Inline tugma havolasi</b>: kanal havola tugmasi uchun (<code>https://t.me/...</code>)<br>
+    4. Havola bo'sh qolsa — <code>@username</code> dan avtomatik yaratiladi
+  </div>
+</div>
+
+<!-- Kanal qo'shish modal -->
+<div class="modal-overlay" id="addChannelModal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-title">➕ Yangi kanal qo'shish</div>
+
+    <div class="form-group">
+      <label class="form-label">Kanal ID yoki Username *</label>
+      <input type="text" class="form-control" id="chId"
+             placeholder="@dtm_yangiliklar yoki -1001234567890">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Kanal nomi (ko'rinadigan nom) *</label>
+      <input type="text" class="form-control" id="chName"
+             placeholder="DTM Yangiliklar">
+    </div>
+    <div class="form-group">
+      <label class="form-label">
+        Inline tugma havolasi
+        <span class="text-muted text-xs">(ixtiyoriy — bo'sh qolsa @username ishlatiladi)</span>
+      </label>
+      <input type="text" class="form-control" id="chLink"
+             placeholder="https://t.me/+abc123 yoki https://t.me/dtm_yangiliklar">
+    </div>
+
+    <div id="chResult" style="display:none"></div>
+
+    <div class="flex gap-3 mt-4">
+      <button class="btn btn-primary w-full" onclick="addChannel()">
+        ➕ Qo'shish
+      </button>
+      <button class="btn btn-ghost w-full" onclick="closeAddModal()">Bekor</button>
+    </div>
+  </div>
+</div>
+
+<!-- O'chirish modal -->
+<div class="modal-overlay" id="delChModal">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-title">🗑 Kanalni o'chirish</div>
+    <p style="color:var(--muted);font-size:14px;margin-bottom:24px">
+      Bu kanal obuna talabini o'chirasizmi?
+    </p>
+    <div class="flex gap-3">
+      <button class="btn btn-danger w-full" id="confirmDelCh">O'chirish</button>
+      <button class="btn btn-ghost w-full"
+              onclick="document.getElementById('delChModal').classList.remove('open')">Bekor</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openAddModal() {
+  document.getElementById('chResult').style.display = 'none';
+  document.getElementById('addChannelModal').classList.add('open');
+}
+function closeAddModal() {
+  document.getElementById('addChannelModal').classList.remove('open');
+  document.getElementById('chId').value = '';
+  document.getElementById('chName').value = '';
+  document.getElementById('chLink').value = '';
+}
+
+async function addChannel() {
+  const channel_id   = document.getElementById('chId').value.trim();
+  const channel_name = document.getElementById('chName').value.trim();
+  const invite_link  = document.getElementById('chLink').value.trim();
+  const result = document.getElementById('chResult');
+
+  if (!channel_id || !channel_name) {
+    result.style.display = 'block';
+    result.innerHTML = '<div class="alert alert-error">❌ Kanal ID va nomi majburiy!</div>';
+    return;
+  }
+
+  const r = await fetch('/api/channels/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ channel_id, channel_name, invite_link })
+  });
+  const d = await r.json();
+  result.style.display = 'block';
+  if (d.success) {
+    result.innerHTML = '<div class="alert alert-success">✅ Kanal qo\'shildi!</div>';
+    setTimeout(() => location.reload(), 1200);
+  } else {
+    result.innerHTML = `<div class="alert alert-error">❌ ${d.error}</div>`;
+  }
+}
+
+async function toggleChannel(id, active) {
+  const r = await fetch(`/api/channels/${id}/toggle`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ is_active: active === true || active === 'true' })
+  });
+  const d = await r.json();
+  if (d.success) location.reload();
+  else alert('Xato: ' + d.error);
+}
+
+function deleteChannel(id) {
+  document.getElementById('delChModal').classList.add('open');
+  document.getElementById('confirmDelCh').onclick = async () => {
+    const r = await fetch(`/api/channels/${id}/delete`, { method: 'POST' });
+    const d = await r.json();
+    if (d.success) location.reload();
+    else alert('Xato: ' + d.error);
+  };
+}
+
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => {
+    if (e.target === el) el.classList.remove('open');
+  });
+});
+</script>
+{% endblock %}

@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+REDIS_URL  = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 
 def get_storage():
-    """Redis mavjud bo'lsa RedisStorage, aks holda MemoryStorage."""
     try:
         from aiogram.fsm.storage.redis import RedisStorage
         storage = RedisStorage.from_url(REDIS_URL)
@@ -39,21 +38,26 @@ bot = Bot(
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
 storage = get_storage()
-dp = Dispatcher(storage=storage)
+dp      = Dispatcher(storage=storage)
 
 
 async def main():
     logger.info("DTM Bot ishga tushmoqda...")
     try:
-        from bot.handlers.start import router as start_router
+        from bot.handlers.start        import router as start_router
         from bot.handlers.registration import router as registration_router
-        from bot.handlers.test import router as test_router
-        from bot.handlers.inline import router as inline_router
+        from bot.handlers.test         import router as test_router
+        from bot.handlers.inline       import router as inline_router
 
+        # Tartibi muhim: registration avval (u ko'proq handler tutadi)
+        dp.include_router(registration_router)
         dp.include_router(start_router)
         dp.include_router(test_router)
-        dp.include_router(registration_router)
         dp.include_router(inline_router)
+
+        # Scheduler ishga tushirish
+        from utils.scheduler import init_scheduler
+        init_scheduler(bot)
 
         logger.info("Bot muvaffaqiyatli ishga tushdi!")
         await dp.start_polling(
@@ -63,6 +67,9 @@ async def main():
     except Exception as e:
         logger.error("Bot xatosi: %s", e)
         raise
+    finally:
+        from utils.scheduler import stop_scheduler
+        stop_scheduler()
 
 
 if __name__ == "__main__":

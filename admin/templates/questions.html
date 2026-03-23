@@ -2,6 +2,125 @@
 {% block title %}Savollar — DTM Admin{% endblock %}
 {% block page_title %}❓ Savollar bazasi{% endblock %}
 
+{% block head %}
+<style>
+  /* ── Export modal overlay ── */
+  .export-modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.75);
+    backdrop-filter: blur(6px);
+    display: none; align-items: center; justify-content: center;
+    z-index: 2000;
+  }
+  .export-modal-overlay.open { display: flex; }
+  .export-modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 32px;
+    width: 100%; max-width: 540px;
+    animation: slideUp .2s ease;
+    position: relative;
+  }
+  .export-modal-title {
+    font-size: 17px; font-weight: 800;
+    margin-bottom: 6px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .export-modal-sub {
+    font-size: 12px; color: var(--muted);
+    margin-bottom: 24px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .export-section-label {
+    font-size: 11px; font-weight: 700;
+    letter-spacing: .8px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 10px;
+  }
+  .export-scope-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .scope-card {
+    border: 1.5px solid var(--border);
+    border-radius: 12px; padding: 14px 16px;
+    cursor: pointer; transition: all .15s;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+  .scope-card:hover { border-color: var(--accent); background: rgba(79,110,247,.05); }
+  .scope-card.selected {
+    border-color: var(--accent);
+    background: rgba(79,110,247,.1);
+  }
+  .scope-card .scope-icon { font-size: 22px; }
+  .scope-card .scope-title { font-size: 13px; font-weight: 700; }
+  .scope-card .scope-desc { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .subject-select-wrap {
+    margin-bottom: 24px;
+    display: none;
+  }
+  .subject-select-wrap.visible { display: block; }
+  .subject-chips {
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .subject-chip {
+    padding: 6px 14px; border-radius: 20px;
+    border: 1.5px solid var(--border);
+    font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all .15s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .subject-chip:hover { border-color: var(--accent); color: var(--accent); }
+  .subject-chip.selected {
+    border-color: var(--accent);
+    background: rgba(79,110,247,.15);
+    color: var(--accent);
+  }
+  .subject-chip .chip-count {
+    font-size: 10px;
+    background: rgba(79,110,247,.2);
+    padding: 1px 6px; border-radius: 10px;
+  }
+  .export-modal-footer {
+    display: flex; gap: 12px; margin-top: 8px;
+  }
+  .export-modal-close {
+    position: absolute; top: 16px; right: 18px;
+    background: none; border: none;
+    color: var(--muted); font-size: 20px;
+    cursor: pointer; padding: 4px;
+    line-height: 1; transition: color .15s;
+  }
+  .export-modal-close:hover { color: var(--text); }
+  .format-row {
+    display: flex; gap: 10px; margin-bottom: 24px;
+  }
+  .format-pill {
+    padding: 6px 14px; border-radius: 8px;
+    border: 1.5px solid var(--border);
+    font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all .15s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .format-pill.selected {
+    border-color: var(--success);
+    background: rgba(34,197,94,.12);
+    color: var(--success);
+  }
+  .export-summary {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px;
+    font-size: 12px; color: var(--muted);
+    margin-bottom: 20px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .export-summary strong { color: var(--accent); }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <!-- Subject stats -->
@@ -34,76 +153,23 @@
         {% endfor %}
       </select>
       <button type="submit" class="btn btn-primary">Filtr</button>
-      {% if search or subject_filter %}<a href="{{ url_for('questions') }}" class="btn btn-ghost">✕</a>{% endif %}
+      {% if search or subject_filter %}
+        <a href="{{ url_for('questions') }}" class="btn btn-ghost">✕</a>
+      {% endif %}
 
       <div style="margin-left:auto" class="flex gap-2">
-        <!-- Export tugmasi (dropdown) -->
-        <div style="position:relative" id="exportDropdownWrap">
-          <button type="button" class="btn btn-ghost"
-                  onclick="toggleExportMenu()" style="gap:6px">
-            📥 Export
-            <span style="font-size:10px;margin-left:2px">▾</span>
-          </button>
-          <div id="exportMenu" style="
-            display:none;
-            position:absolute;top:calc(100% + 6px);right:0;
-            background:var(--surface);border:1px solid var(--border);
-            border-radius:10px;padding:8px;min-width:220px;
-            box-shadow:0 8px 24px rgba(0,0,0,.3);z-index:200">
-
-            <div style="font-size:11px;color:var(--muted);padding:4px 10px 6px;
-                        font-weight:600;letter-spacing:.5px;text-transform:uppercase">
-              Export formati
-            </div>
-
-            <!-- Barcha savollar -->
-            <a href="{{ url_for('export_questions') }}"
-               class="export-item" onclick="closeExportMenu()">
-              <span style="font-size:16px">📊</span>
-              <div>
-                <div style="font-weight:600;font-size:13px">Barcha savollar</div>
-                <div style="font-size:11px;color:var(--muted)">Jami {{ total }} ta · Barcha fanlar</div>
-              </div>
-            </a>
-
-            {% if subject_filter %}
-            <!-- Tanlangan fan -->
-            {% for s in subjects %}{% if s.id == subject_filter %}
-            <a href="{{ url_for('export_questions', subject=s.id) }}"
-               class="export-item active-export" onclick="closeExportMenu()">
-              <span style="font-size:16px">📚</span>
-              <div>
-                <div style="font-weight:600;font-size:13px">{{ s.name_uz }}</div>
-                <div style="font-size:11px;color:var(--muted)">{{ subject_counts.get(s.id,0) }} ta savol</div>
-              </div>
-            </a>
-            {% endif %}{% endfor %}
-            {% endif %}
-
-            <div style="height:1px;background:var(--border);margin:6px 0"></div>
-
-            <!-- Fan bo'yicha alohida -->
-            <div style="font-size:11px;color:var(--muted);padding:4px 10px 4px;font-weight:600;
-                        letter-spacing:.5px;text-transform:uppercase">Fan bo'yicha</div>
-            {% for s in subjects %}
-            {% if subject_counts.get(s.id, 0) > 0 %}
-            <a href="{{ url_for('export_questions', subject=s.id) }}"
-               class="export-item {% if subject_filter == s.id %}active-export{% endif %}"
-               onclick="closeExportMenu()">
-              <span style="font-size:14px">•</span>
-              <div>
-                <div style="font-size:12px;font-weight:500">{{ s.name_uz }}</div>
-                <div style="font-size:11px;color:var(--muted)">{{ subject_counts.get(s.id,0) }} ta</div>
-              </div>
-            </a>
-            {% endif %}
-            {% endfor %}
-          </div>
-        </div>
+        <!-- Export tugmasi — modal ochadi -->
+        <button type="button" class="btn btn-ghost" onclick="openExportModal()" style="gap:6px">
+          📥 Export
+          <span style="font-size:11px;background:rgba(79,110,247,.2);color:var(--accent);
+                       padding:1px 7px;border-radius:10px;font-family:'JetBrains Mono',monospace">
+            {{ total }}
+          </span>
+        </button>
 
         <!-- Import tugmasi -->
         <button type="button" class="btn btn-success" onclick="openImport()">
-          📤 Excel import
+          📤 Import
         </button>
       </div>
     </form>
@@ -113,9 +179,9 @@
 <div class="flex gap-3 mb-4 text-sm text-muted">
   <span>Jami: <strong class="text-accent">{{ total }}</strong> ta savol</span>
   {% if subject_filter %}
-  {% for s in subjects %}{% if s.id == subject_filter %}
-  <span>· Filtr: <strong class="text-accent">{{ s.name_uz }}</strong></span>
-  {% endif %}{% endfor %}
+    {% for s in subjects %}{% if s.id == subject_filter %}
+    <span>· Filtr: <strong class="text-accent">{{ s.name_uz }}</strong></span>
+    {% endif %}{% endfor %}
   {% endif %}
 </div>
 
@@ -144,7 +210,9 @@
             <span class="badge badge-blue text-xs">{{ smap.get(q.subject_id, q.subject_id) }}</span>
           </td>
           <td>
-            <div style="max-width:340px;white-space:pre-wrap;font-size:13px">{{ q.text_uz[:120] }}{% if q.text_uz|length > 120 %}…{% endif %}</div>
+            <div style="max-width:340px;white-space:pre-wrap;font-size:13px">
+              {{ q.text_uz[:120] }}{% if q.text_uz|length > 120 %}…{% endif %}
+            </div>
           </td>
           <td class="text-xs text-muted">{{ q.option_a[:20] }}{% if q.option_a|length > 20 %}…{% endif %}</td>
           <td class="text-xs text-muted">{{ q.option_b[:20] }}{% if q.option_b|length > 20 %}…{% endif %}</td>
@@ -185,6 +253,72 @@
   {% endif %}
 </div>
 {% endif %}
+
+
+<!-- ══════════════════════════════════════════════
+     EXPORT MODAL (yangi, chiroyli)
+═══════════════════════════════════════════════ -->
+<div class="export-modal-overlay" id="exportModal">
+  <div class="export-modal">
+    <button class="export-modal-close" onclick="closeExportModal()">✕</button>
+
+    <div class="export-modal-title">📥 Savollarni eksport qilish</div>
+    <div class="export-modal-sub">Excel (.xlsx) formatida yuklab olish</div>
+
+    <!-- 1. Ko'lam tanlash -->
+    <div class="export-section-label">1. Eksport ko'lami</div>
+    <div class="export-scope-grid">
+      <div class="scope-card selected" id="scopeAll" onclick="selectScope('all')">
+        <div class="scope-icon">📊</div>
+        <div>
+          <div class="scope-title">Barcha fanlar</div>
+          <div class="scope-desc">Jami {{ total }} ta savol<br>Har fan alohida sheet</div>
+        </div>
+      </div>
+      <div class="scope-card" id="scopeOne" onclick="selectScope('one')">
+        <div class="scope-icon">📚</div>
+        <div>
+          <div class="scope-title">Bitta fan</div>
+          <div class="scope-desc">Faqat tanlangan fan<br>savollarini yuklab oling</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Fan tanlash (scope=one da ko'rinadi) -->
+    <div class="subject-select-wrap" id="subjectSelectWrap">
+      <div class="export-section-label">2. Fanni tanlang</div>
+      <div class="subject-chips" id="subjectChips">
+        {% for s in subjects %}
+        {% if subject_counts.get(s.id, 0) > 0 %}
+        <div class="subject-chip {% if subject_filter == s.id %}selected{% endif %}"
+             data-id="{{ s.id }}"
+             onclick="selectSubjectChip(this, {{ s.id }})">
+          {{ s.name_uz }}
+          <span class="chip-count">{{ subject_counts.get(s.id, 0) }}</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Summary -->
+    <div class="export-summary" id="exportSummary">
+      📊 Barcha fanlar — <strong>{{ total }}</strong> ta savol,
+      <strong>{{ subjects|length }}</strong> ta sheet
+    </div>
+
+    <!-- Tugmalar -->
+    <div class="export-modal-footer">
+      <button class="btn btn-success w-full" id="exportConfirmBtn" onclick="doExport()" style="font-size:14px;padding:11px">
+        📥 Excel yuklab olish
+      </button>
+      <button class="btn btn-ghost" onclick="closeExportModal()" style="white-space:nowrap">
+        Bekor
+      </button>
+    </div>
+  </div>
+</div>
+
 
 <!-- Import modal -->
 <div class="modal-overlay" id="importModal">
@@ -252,45 +386,110 @@
 
 {% endblock %}
 
-{% block head %}
-<style>
-  .export-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 10px;
-    border-radius: 8px;
-    color: var(--text);
-    text-decoration: none;
-    cursor: pointer;
-    transition: background .15s;
-    margin-bottom: 2px;
-  }
-  .export-item:hover { background: var(--surface2); }
-  .active-export {
-    background: rgba(79,110,247,.1);
-    border: 1px solid rgba(79,110,247,.2);
-  }
-  .active-export:hover { background: rgba(79,110,247,.18); }
-</style>
-{% endblock %}
-
 {% block scripts %}
 <script>
-// ── Export dropdown ──────────────────────────────────────────────────────────
-function toggleExportMenu() {
-  const menu = document.getElementById('exportMenu');
-  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+// ═══════════════════════════════════════════════════
+// EXPORT MODAL
+// ═══════════════════════════════════════════════════
+let exportScope    = 'all';   // 'all' | 'one'
+let exportSubjectId = null;
+
+// Mavjud subject counts (template dan)
+const subjectCounts = {
+  {% for s in subjects %}
+  {{ s.id }}: {{ subject_counts.get(s.id, 0) }},
+  {% endfor %}
+};
+const totalAll = {{ total }};
+
+function openExportModal() {
+  document.getElementById('exportModal').classList.add('open');
+  // Agar filtr bo'lsa — o'sha fanni default tanlash
+  {% if subject_filter %}
+  selectScope('one');
+  const chip = document.querySelector('.subject-chip[data-id="{{ subject_filter }}"]');
+  if (chip) selectSubjectChip(chip, {{ subject_filter }});
+  {% endif %}
 }
-function closeExportMenu() {
-  document.getElementById('exportMenu').style.display = 'none';
+
+function closeExportModal() {
+  document.getElementById('exportModal').classList.remove('open');
 }
-document.addEventListener('click', e => {
-  const wrap = document.getElementById('exportDropdownWrap');
-  if (wrap && !wrap.contains(e.target)) closeExportMenu();
+
+function selectScope(scope) {
+  exportScope = scope;
+  document.getElementById('scopeAll').classList.toggle('selected', scope === 'all');
+  document.getElementById('scopeOne').classList.toggle('selected', scope === 'one');
+  document.getElementById('subjectSelectWrap').classList.toggle('visible', scope === 'one');
+  updateSummary();
+}
+
+function selectSubjectChip(el, subjectId) {
+  document.querySelectorAll('.subject-chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  exportSubjectId = subjectId;
+  updateSummary();
+}
+
+function updateSummary() {
+  const box = document.getElementById('exportSummary');
+  const btn = document.getElementById('exportConfirmBtn');
+
+  if (exportScope === 'all') {
+    // Count total across all subjects
+    box.innerHTML = `📊 Barcha fanlar — <strong>${totalAll}</strong> ta savol, barcha fanlar alohida sheetsda`;
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  } else {
+    if (!exportSubjectId) {
+      box.innerHTML = `⚠️ Iltimos, yuqoridan fan tanlang`;
+      btn.disabled = true;
+      btn.style.opacity = '.5';
+    } else {
+      const cnt = subjectCounts[exportSubjectId] || 0;
+      const chip = document.querySelector(`.subject-chip[data-id="${exportSubjectId}"]`);
+      const name = chip ? chip.textContent.replace(/\d+/g, '').trim() : '';
+      box.innerHTML = `📚 <strong>${name}</strong> — <strong>${cnt}</strong> ta savol`;
+      btn.disabled = cnt === 0;
+      btn.style.opacity = cnt === 0 ? '.5' : '1';
+    }
+  }
+}
+
+function doExport() {
+  let url = '{{ url_for("export_questions") }}';
+  if (exportScope === 'one' && exportSubjectId) {
+    url += '?subject=' + exportSubjectId;
+  }
+  // Download
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  // Visual feedback
+  const btn = document.getElementById('exportConfirmBtn');
+  const orig = btn.innerHTML;
+  btn.innerHTML = '⏳ Yuklanmoqda...';
+  btn.disabled = true;
+  setTimeout(() => {
+    btn.innerHTML = orig;
+    btn.disabled = false;
+    closeExportModal();
+  }, 2500);
+}
+
+// Close on overlay click
+document.getElementById('exportModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeExportModal();
 });
 
-// ── Import modal ─────────────────────────────────────────────────────────────
+
+// ═══════════════════════════════════════════════════
+// IMPORT MODAL
+// ═══════════════════════════════════════════════════
 function openImport() {
   document.getElementById('importModal').classList.add('open');
 }
@@ -318,7 +517,6 @@ async function doImport() {
   try {
     const r = await fetch('/api/questions/import', { method: 'POST', body: fd });
     const d = await r.json();
-
     result.style.display = 'block';
     if (d.success) {
       result.innerHTML = `<div class="alert alert-success">
@@ -332,12 +530,14 @@ async function doImport() {
   } catch(e) {
     result.innerHTML = `<div class="alert alert-error">❌ Server xatosi</div>`;
   }
-
   btn.textContent = '📤 Import qilish';
   btn.disabled = false;
 }
 
-// ── Delete question ──────────────────────────────────────────────────────────
+
+// ═══════════════════════════════════════════════════
+// DELETE QUESTION
+// ═══════════════════════════════════════════════════
 function deleteQuestion(id) {
   document.getElementById('delQModal').classList.add('open');
   document.getElementById('confirmDelQ').onclick = async () => {
@@ -348,7 +548,6 @@ function deleteQuestion(id) {
   };
 }
 
-// Close modals on overlay click
 document.querySelectorAll('.modal-overlay').forEach(el => {
   el.addEventListener('click', e => {
     if (e.target === el) el.classList.remove('open');
