@@ -34,15 +34,12 @@ def drop_tables():
 
 
 def init_db():
-    """Jadvalllarni yaratib, seed ma'lumotlarini qo'shadi."""
     create_tables()
     seed_default_admin()
     seed_subjects()
     seed_regions_and_districts()
     seed_directions_from_excel()
 
-
-# ─── Seed funksiyalari ────────────────────────────────────────────────────────
 
 def seed_default_admin():
     from .models import Admin
@@ -67,18 +64,17 @@ def seed_subjects():
         if db.query(Subject).first():
             print("Fanlar allaqachon bor, o'tkazildi")
             return
-
         subjects = [
-            (1,  'Matematika',  'Matematika',  'Математика',     1.1),
-            (2,  'Fizika',      'Fizika',       'Физика',         3.1),
-            (3,  'Kimyo',       'Kimyo',        'Химия',          3.1),
-            (4,  'Biologiya',   'Biologiya',    'Биология',       3.1),
-            (5,  'Tarix',       'Tarix',        'История',        1.1),
-            (6,  'Ona tili',    'Ona tili',     'Родной язык',    1.1),
-            (7,  'Adabiyot',    'Adabiyot',     'Литература',     2.1),
-            (8,  'Geografiya',  'Geografiya',   'География',      2.1),
-            (9,  'Ingliz tili', 'Ingliz tili',  'Английский язык',2.1),
-            (10, 'Rus tili',    'Rus tili',     'Русский язык',   2.1),
+            (1,  'Matematika',  'Matematika',  'Математика',      1.1),
+            (2,  'Fizika',      'Fizika',       'Физика',          3.1),
+            (3,  'Kimyo',       'Kimyo',        'Химия',           3.1),
+            (4,  'Biologiya',   'Biologiya',    'Биология',        3.1),
+            (5,  'Tarix',       'Tarix',        'История',         1.1),
+            (6,  'Ona tili',    'Ona tili',     'Родной язык',     1.1),
+            (7,  'Adabiyot',    'Adabiyot',     'Литература',      2.1),
+            (8,  'Geografiya',  'Geografiya',   'География',       2.1),
+            (9,  'Ingliz tili', 'Ingliz tili',  'Английский язык', 2.1),
+            (10, 'Rus tili',    'Rus tili',     'Русский язык',    2.1),
         ]
         for sid, uz, oz, ru, pts in subjects:
             db.add(Subject(id=sid, name_uz=uz, name_oz=oz, name_ru=ru, points_per_question=pts))
@@ -91,8 +87,19 @@ def seed_subjects():
         db.close()
 
 
-def seed_regions_and_districts():
+def _load_json(filepath: str) -> list:
+    """JSON faylni o'qiydi — utf-8, utf-8-sig yoki cp1251 encoding bilan."""
     import json
+    for enc in ('utf-8', 'utf-8-sig', 'cp1251'):
+        try:
+            with open(filepath, 'r', encoding=enc) as f:
+                return json.load(f)
+        except (UnicodeDecodeError, ValueError):
+            continue
+    raise RuntimeError(f"JSON o'qib bo'lmadi: {filepath}")
+
+
+def seed_regions_and_districts():
     import os
     from .models import Region, District
 
@@ -104,27 +111,14 @@ def seed_regions_and_districts():
 
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-        # Viloyatlar
-        with open(os.path.join(base, 'regions.json'), 'r', encoding='cp1251') as f:
-            for r in json.load(f):
-                db.add(Region(
-                    id=int(r['id']),
-                    name_uz=r['name_uz'],
-                    name_oz=r['name_oz'],
-                    name_ru=r['name_ru']
-                ))
+        for r in _load_json(os.path.join(base, 'regions.json')):
+            db.add(Region(id=int(r['id']), name_uz=r['name_uz'],
+                          name_oz=r['name_oz'], name_ru=r['name_ru']))
         db.commit()
 
-        # Tumanlar
-        with open(os.path.join(base, 'districts.json'), 'r', encoding='cp1251') as f:
-            for d in json.load(f):
-                db.add(District(
-                    id=int(d['id']),
-                    region_id=int(d['region_id']),
-                    name_uz=d['name_uz'],
-                    name_oz=d['name_oz'],
-                    name_ru=d['name_ru']
-                ))
+        for d in _load_json(os.path.join(base, 'districts.json')):
+            db.add(District(id=int(d['id']), region_id=int(d['region_id']),
+                            name_uz=d['name_uz'], name_oz=d['name_oz'], name_ru=d['name_ru']))
         db.commit()
         print("✅ Viloyat va tumanlar qo'shildi")
     except Exception as e:
@@ -135,7 +129,6 @@ def seed_regions_and_districts():
 
 
 def seed_directions_from_excel():
-    """Excel fayllardan yo'nalishlarni o'qib bazaga yozadi."""
     from .models import Direction
     from utils.excel_parser import parse_directions_from_excel
 
@@ -150,20 +143,14 @@ def seed_directions_from_excel():
             print("❌ Yo'nalish ma'lumotlari topilmadi")
             return
 
-        count = 0
         for d in directions:
             db.add(Direction(
-                id=d['code'],
-                name_uz=d['name'],
-                name_oz=d['name'],
-                name_ru=d['name'],
-                subject1_id=d['subject1_id'],
-                subject2_id=d['subject2_id'],
+                id=d['code'], name_uz=d['name'], name_oz=d['name'], name_ru=d['name'],
+                subject1_id=d['subject1_id'], subject2_id=d['subject2_id'],
             ))
-            count += 1
 
         db.commit()
-        print(f"✅ {count} ta yo'nalish qo'shildi")
+        print(f"✅ {len(directions)} ta yo'nalish qo'shildi")
     except Exception as e:
         db.rollback()
         print(f"❌ Yo'nalish seed xato: {e}")
