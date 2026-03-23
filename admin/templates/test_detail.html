@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block title %}Sessiya #{{ session.id }} — DTM Admin{% endblock %}
+{% block page_title %}🧪 Test sessiya #{{ session.id }}{% endblock %}
+
+{% block content %}
+<div class="flex gap-3 mb-4">
+  <a href="{{ url_for('tests') }}" class="btn btn-ghost btn-sm">← Orqaga</a>
+</div>
+
+<div class="grid-2 mb-4">
+  <div class="card">
+    <div class="card-header"><span class="card-title">Sessiya ma'lumotlari</span></div>
+    <div class="card-body">
+      <table style="width:100%">
+        {% set rows = [
+          ('ID', session.id),
+          ('Sana', session.exam_date.strftime('%d.%m.%Y %H:%M')),
+          ('Holat', session.status),
+          ('Davomiyligi', session.duration_minutes ~ ' daqiqa'),
+        ] %}
+        {% for label, val in rows %}
+        <tr>
+          <td style="padding:8px 0;color:var(--muted);font-size:12px;width:40%">{{ label }}</td>
+          <td class="fw-700">{{ val }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">Statistika</span></div>
+    <div class="card-body" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;text-align:center">
+      <div>
+        <div style="font-size:28px;font-weight:800;color:var(--accent)">{{ participations|length }}</div>
+        <div class="text-muted text-xs mt-1">Ishtirokchi</div>
+      </div>
+      <div>
+        <div style="font-size:28px;font-weight:800;color:var(--success)">
+          {{ participations|selectattr('status','eq','completed')|list|length }}
+        </div>
+        <div class="text-muted text-xs mt-1">Yakunlagan</div>
+      </div>
+      <div>
+        <div style="font-size:28px;font-weight:800;color:var(--warning)">
+          {{ participations|selectattr('status','eq','active')|list|length }}
+        </div>
+        <div class="text-muted text-xs mt-1">Davom etmoqda</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">Ishtirokchilar</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>F.I.SH</th><th>Yo'nalish</th>
+          <th>Holat</th><th>Ball</th><th>Sana</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in participations %}
+        <tr>
+          <td class="text-muted text-xs">{{ loop.index }}</td>
+          <td class="fw-700">
+            {% if p.user %}{{ p.user.first_name }} {{ p.user.last_name or '' }}{% else %}—{% endif %}
+          </td>
+          <td class="text-sm text-muted">{{ p.direction_id }}</td>
+          <td>
+            {% if p.status == 'completed' %}<span class="badge badge-green">Tugallangan</span>
+            {% elif p.status == 'active' %}<span class="badge badge-orange">Faol</span>
+            {% else %}<span class="badge badge-gray">{{ p.status }}</span>{% endif %}
+          </td>
+          <td>
+            {% set sc = scores_map.get(p.user_id) %}
+            {% if sc %}<span class="badge badge-blue font-mono">{{ sc.score }}</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td class="text-muted text-xs">{{ p.joined_at.strftime('%d.%m %H:%M') }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" style="text-align:center;padding:30px;color:var(--muted)">
+          Ishtirokchi yo'q
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

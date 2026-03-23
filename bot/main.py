@@ -8,17 +8,37 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
 load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
+REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-storage = MemoryStorage()
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+
+def get_storage():
+    """Redis mavjud bo'lsa RedisStorage, aks holda MemoryStorage."""
+    try:
+        from aiogram.fsm.storage.redis import RedisStorage
+        storage = RedisStorage.from_url(REDIS_URL)
+        logger.info("✅ RedisStorage ulandi: %s", REDIS_URL)
+        return storage
+    except Exception as e:
+        logger.warning("⚠️  Redis ulanmadi (%s) — MemoryStorage ishlatiladi", e)
+        from aiogram.fsm.storage.memory import MemoryStorage
+        return MemoryStorage()
+
+
+bot = Bot(
+    token=BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
+storage = get_storage()
 dp = Dispatcher(storage=storage)
 
 
@@ -41,7 +61,7 @@ async def main():
             allowed_updates=["message", "callback_query", "inline_query"]
         )
     except Exception as e:
-        logger.error(f"Bot xatosi: {e}")
+        logger.error("Bot xatosi: %s", e)
         raise
 
 

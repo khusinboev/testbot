@@ -1,0 +1,168 @@
+{% extends 'base.html' %}
+{% block title %}{{ user.first_name }} {{ user.last_name or '' }} — DTM Admin{% endblock %}
+{% block page_title %}👤 Foydalanuvchi #{{ user.id }}{% endblock %}
+
+{% block content %}
+
+<div class="flex gap-3 mb-4">
+  <a href="{{ url_for('users') }}" class="btn btn-ghost btn-sm">← Orqaga</a>
+</div>
+
+<div class="grid-2">
+
+  <!-- Profile card -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Shaxsiy ma'lumotlar</span>
+      {% if user.direction %}
+      <span class="badge badge-blue">{{ user.direction.id }}</span>
+      {% else %}
+      <span class="badge badge-orange">Yo'nalish yo'q</span>
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <table style="width:100%">
+        <tr>
+          <td style="padding:8px 0;color:var(--muted);font-size:12px;width:35%">ID</td>
+          <td class="font-mono">{{ user.id }}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;color:var(--muted);font-size:12px">Telegram ID</td>
+          <td class="font-mono">{{ user.telegram_id }}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;color:var(--muted);font-size:12px">F.I.SH</td>
+          <td class="fw-700">{{ user.first_name }} {{ user.last_name or '' }}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;color:var(--muted);font-size:12px">Telefon</td>
+          <td class="font-mono">{{ user.phone }}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;color:var(--muted);font-size:12px">Viloyat</td>
+          <td>{{ user.region.name_uz if user.region else '—' }}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;color:var(--muted);font-size:12px">Tuman</td>
+          <td>{{ user.district.name_uz if user.district else '—' }}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;color:var(--muted);font-size:12px">Yo'nalish</td>
+          <td>{{ user.direction.name_uz if user.direction else '—' }}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;color:var(--muted);font-size:12px">Ro'yxat</td>
+          <td>{{ user.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+        </tr>
+      </table>
+
+      <div class="mt-4">
+        <button class="btn btn-danger w-full"
+                onclick="confirmDelete({{ user.id }}, '{{ user.first_name }}')">
+          🗑️ Foydalanuvchini o'chirish
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div>
+    <!-- Score summary -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <span class="card-title">📊 Natijalar statistikasi</span>
+      </div>
+      <div class="card-body">
+        {% if scores %}
+        {% set best = scores | map(attribute='score') | max %}
+        {% set avg  = (scores | map(attribute='score') | sum) / scores|length %}
+        <div class="grid-3" style="grid-template-columns:repeat(3,1fr);gap:12px">
+          <div style="text-align:center">
+            <div style="font-size:24px;font-weight:800;color:var(--accent)">{{ scores|length }}</div>
+            <div class="text-muted text-xs mt-1">Jami testlar</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:24px;font-weight:800;color:var(--success)">{{ best|round(1) }}</div>
+            <div class="text-muted text-xs mt-1">Eng yuqori</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:24px;font-weight:800;color:var(--warning)">{{ avg|round(1) }}</div>
+            <div class="text-muted text-xs mt-1">O'rtacha</div>
+          </div>
+        </div>
+        {% else %}
+        <p class="text-muted" style="text-align:center;padding:16px">Hali test topshirilmagan</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Last scores -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🕐 So'nggi natijalar</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Ball</th>
+              <th>To'g'ri</th>
+              <th>Foiz</th>
+              <th>Sana</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in scores %}
+            <tr>
+              <td><span class="badge badge-blue font-mono">{{ s.score }}</span></td>
+              <td class="text-sm">{{ s.correct_count }}/{{ s.total_questions }}</td>
+              <td>
+                {% set pct = (s.correct_count / s.total_questions * 100) if s.total_questions else 0 %}
+                <span class="text-sm {% if pct >= 70 %}text-success{% elif pct >= 50 %}text-accent{% else %}text-danger{% endif %}">
+                  {{ pct|round(1) }}%
+                </span>
+              </td>
+              <td class="text-muted text-xs">{{ s.created_at.strftime('%d.%m %H:%M') }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-muted" style="text-align:center;padding:20px">
+              Test yo'q
+            </td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete modal -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-title">🗑️ O'chirishni tasdiqlash</div>
+    <p id="deleteMsg" style="color:var(--muted);font-size:14px;margin-bottom:16px"></p>
+    <p style="color:var(--danger);font-size:13px;margin-bottom:24px">
+      ⚠️ Barcha test natijalari ham o'chib ketadi!
+    </p>
+    <div class="flex gap-3">
+      <button class="btn btn-danger w-full" id="confirmDeleteBtn">O'chirish</button>
+      <button class="btn btn-ghost w-full" onclick="document.getElementById('deleteModal').classList.remove('open')">Bekor</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function confirmDelete(id, name) {
+  document.getElementById('deleteMsg').textContent = `"${name}" ni o'chirasizmi?`;
+  document.getElementById('deleteModal').classList.add('open');
+  document.getElementById('confirmDeleteBtn').onclick = async () => {
+    const r = await fetch(`/api/users/${id}/delete`, { method: 'POST' });
+    const d = await r.json();
+    if (d.success) window.location.href = '/users';
+    else alert('Xato: ' + d.error);
+  };
+}
+</script>
+{% endblock %}

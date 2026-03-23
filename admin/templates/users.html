@@ -1,47 +1,180 @@
-<!DOCTYPE html>
-<html lang="uz">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DTM Bot Admin - Users</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container">
-            <a class="navbar-brand" href="#">DTM Bot Admin</a>
-            <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
-            </div>
-        </div>
-    </nav>
+{% extends 'base.html' %}
+{% block title %}Foydalanuvchilar — DTM Admin{% endblock %}
+{% block page_title %}👥 Foydalanuvchilar{% endblock %}
 
-    <div class="container mt-4">
-        <div class="row">
-            <div class="col-md-3">
-                <div class="list-group">
-                    <a href="{{ url_for('dashboard') }}" class="list-group-item list-group-item-action">Dashboard</a>
-                    <a href="{{ url_for('users') }}" class="list-group-item list-group-item-action active">Users</a>
-                    <a href="{{ url_for('tests') }}" class="list-group-item list-group-item-action">Tests</a>
-                </div>
+{% block content %}
+
+<!-- Filter bar -->
+<div class="card mb-4">
+  <div class="card-body" style="padding:16px">
+    <form method="GET" class="flex gap-3 items-center" style="flex-wrap:wrap">
+      <input type="text" name="search" class="form-control" style="max-width:260px"
+             placeholder="🔍 Ism, familiya, telefon..." value="{{ search }}">
+      <select name="region" class="form-control" style="max-width:200px">
+        <option value="">Barcha viloyatlar</option>
+        {% for r in regions %}
+        <option value="{{ r.id }}" {% if region_filter|string == r.id|string %}selected{% endif %}>
+          {{ r.name_uz }}
+        </option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-primary">Filtr</button>
+      {% if search or region_filter %}
+      <a href="{{ url_for('users') }}" class="btn btn-ghost">✕ Tozalash</a>
+      {% endif %}
+      <div style="margin-left:auto" class="flex gap-2">
+        <a href="{{ url_for('export_users') }}" class="btn btn-success btn-sm">
+          📥 Excel export
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Stats row -->
+<div class="flex gap-3 mb-4 text-sm text-muted">
+  <span>Jami: <strong class="text-accent">{{ total }}</strong> ta</span>
+  {% if search %}<span>· Qidiruv: «{{ search }}»</span>{% endif %}
+</div>
+
+<!-- Table -->
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>F.I.SH</th>
+          <th>Telefon</th>
+          <th>Viloyat / Tuman</th>
+          <th>Yo'nalish</th>
+          <th>Testlar</th>
+          <th>Eng ball</th>
+          <th>Sana</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        {% set stats = user_stats.get(u.id, {}) %}
+        <tr>
+          <td class="text-muted font-mono text-xs">{{ u.id }}</td>
+          <td>
+            <div class="fw-700">{{ u.first_name }} {{ u.last_name or '' }}</div>
+          </td>
+          <td class="font-mono text-sm">{{ u.phone }}</td>
+          <td>
+            <div>{{ u.region.name_uz if u.region else '—' }}</div>
+            <div class="text-muted text-xs">{{ u.district.name_uz if u.district else '' }}</div>
+          </td>
+          <td>
+            {% if u.direction %}
+            <span class="truncate text-sm" title="{{ u.direction.name_uz }}">
+              {{ u.direction.name_uz[:30] }}{% if u.direction.name_uz|length > 30 %}…{% endif %}
+            </span>
+            {% else %}
+            <span class="badge badge-orange">Belgilanmagan</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if stats.test_count > 0 %}
+            <span class="badge badge-blue">{{ stats.test_count }}</span>
+            {% else %}
+            <span class="badge badge-gray">0</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if stats.best_score %}
+            <span class="font-mono text-sm text-success">{{ stats.best_score }}</span>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="text-muted text-xs">{{ u.created_at.strftime('%d.%m.%Y') }}</td>
+          <td>
+            <div class="flex gap-2">
+              <a href="{{ url_for('user_detail', user_id=u.id) }}"
+                 class="btn btn-ghost btn-sm">Ko'rish</a>
+              <button class="btn btn-danger btn-sm"
+                      onclick="confirmDelete({{ u.id }}, '{{ u.first_name }} {{ u.last_name or '' }}')">
+                🗑
+              </button>
             </div>
-            <div class="col-md-9">
-                <h2>User Management</h2>
-                <div class="card">
-                    <div class="card-header">
-                        <h5>Registered Users</h5>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted">User management functionality will be implemented in Phase 2.</p>
-                        <div class="alert alert-info">
-                            <strong>Coming Soon:</strong> View, edit, and manage user accounts, test results, and statistics.
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">
+            {% if search %}«{{ search }}» bo'yicha hech narsa topilmadi{% else %}Hali foydalanuvchi yo'q{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="?page={{ page-1 }}&search={{ search }}&region={{ region_filter }}" class="page-btn">← Oldingi</a>
+  {% endif %}
+
+  {% for p in range([1, page-2]|max, [total_pages+1, page+3]|min) %}
+  <a href="?page={{ p }}&search={{ search }}&region={{ region_filter }}"
+     class="page-btn {% if p == page %}active{% endif %}">{{ p }}</a>
+  {% endfor %}
+
+  {% if page < total_pages %}
+  <a href="?page={{ page+1 }}&search={{ search }}&region={{ region_filter }}" class="page-btn">Keyingi →</a>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- Delete confirmation modal -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-title">🗑️ Foydalanuvchini o'chirish</div>
+    <p id="deleteMsg" style="color:var(--muted);font-size:14px;margin-bottom:20px"></p>
+    <p style="color:var(--danger);font-size:13px;margin-bottom:24px">
+      ⚠️ Barcha test natijalari ham o'chib ketadi!
+    </p>
+    <div class="flex gap-3">
+      <button class="btn btn-danger w-full" id="confirmDeleteBtn">Ha, o'chirish</button>
+      <button class="btn btn-ghost w-full" onclick="closeModal()">Bekor qilish</button>
     </div>
+  </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let deleteId = null;
+
+function confirmDelete(id, name) {
+  deleteId = id;
+  document.getElementById('deleteMsg').textContent =
+    `"${name}" foydalanuvchisini o'chirishni tasdiqlaysizmi?`;
+  document.getElementById('deleteModal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('deleteModal').classList.remove('open');
+  deleteId = null;
+}
+
+document.getElementById('confirmDeleteBtn').onclick = async () => {
+  if (!deleteId) return;
+  const res = await fetch(`/api/users/${deleteId}/delete`, { method: 'POST' });
+  const data = await res.json();
+  if (data.success) location.reload();
+  else alert('Xato: ' + data.error);
+};
+
+document.getElementById('deleteModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+</script>
+{% endblock %}

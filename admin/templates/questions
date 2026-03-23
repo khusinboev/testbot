@@ -1,0 +1,244 @@
+{% extends 'base.html' %}
+{% block title %}Savollar — DTM Admin{% endblock %}
+{% block page_title %}❓ Savollar bazasi{% endblock %}
+
+{% block content %}
+
+<!-- Subject stats -->
+<div class="stats-grid mb-4" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
+  {% for s in subjects %}
+  <div class="stat-card {% if subject_filter == s.id %}blue{% endif %}"
+       style="padding:14px;cursor:pointer"
+       onclick="window.location='?subject={{ s.id }}'">
+    <div style="font-size:13px;font-weight:700">{{ s.name_uz }}</div>
+    <div style="font-size:22px;font-weight:800;color:var(--accent);margin:6px 0">
+      {{ subject_counts.get(s.id, 0) }}
+    </div>
+    <div class="text-muted text-xs">savol</div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Filter + actions -->
+<div class="card mb-4">
+  <div class="card-body" style="padding:16px">
+    <form method="GET" class="flex gap-3 items-center" style="flex-wrap:wrap">
+      <input type="text" name="search" class="form-control" style="max-width:260px"
+             placeholder="🔍 Savol matni..." value="{{ search }}">
+      <select name="subject" class="form-control" style="max-width:180px">
+        <option value="0">Barcha fanlar</option>
+        {% for s in subjects %}
+        <option value="{{ s.id }}" {% if subject_filter == s.id %}selected{% endif %}>
+          {{ s.name_uz }} ({{ subject_counts.get(s.id,0) }})
+        </option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-primary">Filtr</button>
+      {% if search or subject_filter %}<a href="{{ url_for('questions') }}" class="btn btn-ghost">✕</a>{% endif %}
+      <div style="margin-left:auto" class="flex gap-2">
+        <button type="button" class="btn btn-success" onclick="openImport()">
+          📤 Excel import
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="flex gap-3 mb-4 text-sm text-muted">
+  <span>Jami: <strong class="text-accent">{{ total }}</strong> ta savol</span>
+</div>
+
+<!-- Table -->
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Fan</th>
+          <th style="min-width:320px">Savol</th>
+          <th>A</th><th>B</th><th>C</th><th>D</th>
+          <th>Javob</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for q in questions %}
+        <tr>
+          <td class="text-muted font-mono text-xs">{{ q.id }}</td>
+          <td>
+            {% set smap = {1:'Matematika',2:'Fizika',3:'Kimyo',4:'Biologiya',
+                           5:'Tarix',6:'Ona tili',7:'Adabiyot',8:'Geografiya',
+                           9:'Ingliz',10:'Rus'} %}
+            <span class="badge badge-blue text-xs">{{ smap.get(q.subject_id, q.subject_id) }}</span>
+          </td>
+          <td>
+            <div style="max-width:340px;white-space:pre-wrap;font-size:13px">{{ q.text_uz[:120] }}{% if q.text_uz|length > 120 %}…{% endif %}</div>
+          </td>
+          <td class="text-xs text-muted">{{ q.option_a[:20] }}{% if q.option_a|length > 20 %}…{% endif %}</td>
+          <td class="text-xs text-muted">{{ q.option_b[:20] }}{% if q.option_b|length > 20 %}…{% endif %}</td>
+          <td class="text-xs text-muted">{{ q.option_c[:20] }}{% if q.option_c|length > 20 %}…{% endif %}</td>
+          <td class="text-xs text-muted">{{ q.option_d[:20] }}{% if q.option_d|length > 20 %}…{% endif %}</td>
+          <td>
+            <span class="badge badge-green font-mono">{{ q.correct_answer }}</span>
+          </td>
+          <td>
+            <button class="btn btn-danger btn-sm"
+                    onclick="deleteQuestion({{ q.id }})">🗑</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">
+            Savollar topilmadi
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="?page={{ page-1 }}&subject={{ subject_filter }}&search={{ search }}" class="page-btn">←</a>
+  {% endif %}
+  {% for p in range([1,page-2]|max, [total_pages+1,page+3]|min) %}
+  <a href="?page={{ p }}&subject={{ subject_filter }}&search={{ search }}"
+     class="page-btn {% if p==page %}active{% endif %}">{{ p }}</a>
+  {% endfor %}
+  {% if page < total_pages %}
+  <a href="?page={{ page+1 }}&subject={{ subject_filter }}&search={{ search }}" class="page-btn">→</a>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- Import modal -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title">📤 Excel dan savollar import qilish</div>
+
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:20px;font-size:13px">
+      <div class="fw-700 mb-2">📋 Excel format (ustunlar tartibi):</div>
+      <div class="font-mono text-xs" style="color:var(--accent)">
+        A: Savol matni<br>
+        B: Variant A<br>
+        C: Variant B<br>
+        D: Variant C<br>
+        E: Variant D<br>
+        F: To'g'ri javob (A/B/C/D)
+      </div>
+      <div class="text-muted text-xs mt-2">* 1-qator — sarlavha, 2-qatordan boshlab savollar</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Fan tanlang</label>
+      <select class="form-control" id="importSubject">
+        <option value="">— Fan tanlang —</option>
+        {% for s in subjects %}
+        <option value="{{ s.id }}">{{ s.name_uz }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Excel fayl (.xlsx)</label>
+      <input type="file" class="form-control" id="importFile" accept=".xlsx,.xls">
+    </div>
+
+    <div id="importResult" style="display:none"></div>
+
+    <div class="flex gap-3 mt-3">
+      <button class="btn btn-success w-full" id="importBtn" onclick="doImport()">
+        📤 Import qilish
+      </button>
+      <button class="btn btn-ghost w-full" onclick="closeImport()">Bekor</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete confirm modal -->
+<div class="modal-overlay" id="delQModal">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-title">❌ Savolni o'chirish</div>
+    <p style="color:var(--muted);font-size:14px;margin-bottom:24px">
+      Bu savolni o'chirishni tasdiqlaysizmi?
+    </p>
+    <div class="flex gap-3">
+      <button class="btn btn-danger w-full" id="confirmDelQ">O'chirish</button>
+      <button class="btn btn-ghost w-full"
+              onclick="document.getElementById('delQModal').classList.remove('open')">Bekor</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openImport() {
+  document.getElementById('importModal').classList.add('open');
+}
+function closeImport() {
+  document.getElementById('importModal').classList.remove('open');
+  document.getElementById('importResult').style.display = 'none';
+}
+
+async function doImport() {
+  const subject = document.getElementById('importSubject').value;
+  const file    = document.getElementById('importFile').files[0];
+  const result  = document.getElementById('importResult');
+
+  if (!subject) { alert('Fan tanlang!'); return; }
+  if (!file)    { alert('Fayl tanlang!'); return; }
+
+  const btn = document.getElementById('importBtn');
+  btn.textContent = '⏳ Import qilinmoqda...';
+  btn.disabled = true;
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('subject_id', subject);
+
+  try {
+    const r = await fetch('/api/questions/import', { method: 'POST', body: fd });
+    const d = await r.json();
+
+    result.style.display = 'block';
+    if (d.success) {
+      result.innerHTML = `<div class="alert alert-success">
+        ✅ ${d.added} ta savol muvaffaqiyatli qo'shildi!
+        ${d.errors.length ? '<br>⚠️ ' + d.errors.length + ' ta qator o\'tkazib yuborildi' : ''}
+      </div>`;
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      result.innerHTML = `<div class="alert alert-error">❌ ${d.error}</div>`;
+    }
+  } catch(e) {
+    result.innerHTML = `<div class="alert alert-error">❌ Server xatosi</div>`;
+  }
+
+  btn.textContent = '📤 Import qilish';
+  btn.disabled = false;
+}
+
+function deleteQuestion(id) {
+  document.getElementById('delQModal').classList.add('open');
+  document.getElementById('confirmDelQ').onclick = async () => {
+    const r = await fetch(`/api/questions/${id}/delete`, { method: 'POST' });
+    const d = await r.json();
+    if (d.success) location.reload();
+    else alert('Xato: ' + d.error);
+  };
+}
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => {
+    if (e.target === el) el.classList.remove('open');
+  });
+});
+</script>
+{% endblock %}
