@@ -12,6 +12,7 @@ from bot.keyboards import (
     get_regions_keyboard,
     get_districts_keyboard,
     get_directions_keyboard,
+    get_direction_search_results,
     get_phone_keyboard,
     get_main_menu_keyboard,
     get_test_confirmation_keyboard,
@@ -348,7 +349,9 @@ async def test_direction_selected(callback_query: types.CallbackQuery, state: FS
         db.close()
         return
 
-    # Foydalanuvchiga yo'nalishni saqlab qo'yish
+    # Sessiondan yopilmadan oldin nomni olib qo'yamiz — DetachedInstanceError oldini olish
+    direction_name = direction.name_uz
+
     user_db = db.query(User).filter(
         User.telegram_id == callback_query.from_user.id
     ).first()
@@ -359,7 +362,7 @@ async def test_direction_selected(callback_query: types.CallbackQuery, state: FS
 
     await callback_query.message.delete()
     user = get_user_by_telegram_id(callback_query.from_user.id)
-    await callback_query.answer(f"✅ Yo'nalish tanlandi: {direction.name_uz[:30]}")
+    await callback_query.answer(f"✅ Yo'nalish tanlandi: {direction_name[:30]}")
     await _show_test_confirmation(callback_query.message, state, user)
 
 
@@ -818,7 +821,7 @@ async def profile_direction_back(callback_query: types.CallbackQuery, state: FSM
 
 @router.callback_query(ProfileEditStates.edit_direction, F.data.startswith("direction_"))
 async def profile_direction_selected(callback_query: types.CallbackQuery, state: FSMContext):
-    if "_page_" in callback_query.data:
+    if "_page_" in callback_query.data or callback_query.data in ("direction_search", "direction_search_empty", "direction_search_back", "direction_list_back"):
         return
 
     direction_id = callback_query.data.split("_")[1]
@@ -829,6 +832,7 @@ async def profile_direction_selected(callback_query: types.CallbackQuery, state:
         db.close()
         return
 
+    direction_name = direction.name_uz  # sessiondan oldin olib qo'yamiz
     user = db.query(User).filter(User.telegram_id == callback_query.from_user.id).first()
     if user:
         user.direction_id = direction_id
@@ -888,4 +892,171 @@ async def return_to_main_menu(message: types.Message, state: FSMContext):
         f"<b>Nima qilmoqchi ekaningizni tanlang:</b>",
         reply_markup=keyboard,
         parse_mode="HTML"
+    )
+
+
+# ─── Yo'nalish qidiruv — test konteksti ──────────────────────────────────────
+
+@router.callback_query(TestSessionStates.waiting_for_direction, F.data == "direction_search")
+async def test_direction_search_start(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.message.edit_text(
+        "🔍 <b>Yo'nalish qidirish</b>\n\n"
+        "Yo'nalish nomini kiriting (masalan: <code>dastur</code>, <code>tibbiy</code>):",
+        parse_mode="HTML"
+    )
+    await state.set_state(TestSessionStates.searching_direction)
+
+
+@router.message(TestSessionStates.searching_direction)
+async def test_direction_search_query(message: types.Message, state: FSMContext):
+    query = message.text.strip() if message.text else ""
+    if not query:
+        await message.answer("❌ Iltimos, qidirish uchun matn kiriting.")
+        return
+
+    keyboard = await get_direction_search_results(query)
+    db = Session()
+    count = db.query(Direction).filter(Direction.name_uz.ilike(f"%{query}%")).count()
+    db.close()
+
+    await message.answer(
+        f"🔍 <b>«{query}»</b> bo'yicha natijalar: {count} ta",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(TestSessionStates.searching_direction, F.data == "direction_search_back")
+async def test_direction_search_back(callback_query: types.CallbackQuery, state: FSMContext):
+    keyboard = await get_directions_keyboard()
+    db = Session()
+    total = db.query(Direction).count()
+    db.close()
+    await callback_query.message.edit_text(
+        f"📚 <b>Ta'lim yo'nalishingizni tanlang</b>\n\n"
+        f"<i>Jami {total} ta yo'nalish mavjud</i>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(TestSessionStates.waiting_for_direction)
+
+
+@router.callback_query(TestSessionStates.searching_direction, F.data.startswith("direction_"))
+async def test_direction_search_selected(callback_query: types.CallbackQuery, state: FSMContext):
+    if callback_query.data in ("direction_search", "direction_search_empty", "direction_search_back", "direction_list_back"):
+        return
+
+    direction_id = callback_query.data.split("_")[1]
+    db = Session()
+    direction = db.query(Direction).filter(Direction.id == direction_id).first()
+    if not direction:
+        await callback_query.answer("❌ Yo'nalish topilmadi!")
+        db.close()
+        return
+
+    direction_name = direction.name_uz
+    user_db = db.query(User).filter(User.telegram_id == callback_query.from_user.id).first()
+    if user_db:
+        user_db.direction_id = direction_id
+        db.commit()
+    db.close()
+
+    try:
+        await callback_query.message.delete()
+    except Exception:
+        pass
+    user = get_user_by_telegram_id(callback_query.from_user.id)
+    await callback_query.answer(f"✅ {direction_name[:30]}")
+    await _show_test_confirmation(callback_query.message, state, user)
+
+
+# ─── Yo'nalish qidiruv — profil konteksti ────────────────────────────────────
+
+@router.callback_query(ProfileEditStates.edit_direction, F.data == "direction_search")
+async def profile_direction_search_start(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.message.edit_text(
+        "🔍 <b>Yo'nalish qidirish</b>\n\n"
+        "Yo'nalish nomini kiriting (masalan: <code>dastur</code>, <code>tibbiy</code>):",
+        parse_mode="HTML"
+    )
+    await state.set_state(ProfileEditStates.searching_direction)
+
+
+@router.message(ProfileEditStates.searching_direction)
+async def profile_direction_search_query(message: types.Message, state: FSMContext):
+    query = message.text.strip() if message.text else ""
+    if not query:
+        await message.answer("❌ Iltimos, qidirish uchun matn kiriting.")
+        return
+
+    keyboard = await get_direction_search_results(query)
+    db = Session()
+    count = db.query(Direction).filter(Direction.name_uz.ilike(f"%{query}%")).count()
+    db.close()
+
+    await message.answer(
+        f"🔍 <b>«{query}»</b> bo'yicha natijalar: {count} ta",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(ProfileEditStates.searching_direction, F.data == "direction_search_back")
+async def profile_direction_search_back(callback_query: types.CallbackQuery, state: FSMContext):
+    keyboard = await get_directions_keyboard()
+    db = Session()
+    total = db.query(Direction).count()
+    db.close()
+    await callback_query.message.edit_text(
+        f"📚 <b>Yo'nalishni o'zgartirish</b>\n\n"
+        f"<i>Jami {total} ta yo'nalish</i>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(ProfileEditStates.edit_direction)
+
+
+@router.callback_query(ProfileEditStates.searching_direction, F.data.startswith("direction_"))
+async def profile_direction_search_selected(callback_query: types.CallbackQuery, state: FSMContext):
+    if callback_query.data in ("direction_search", "direction_search_empty", "direction_search_back", "direction_list_back"):
+        return
+
+    direction_id = callback_query.data.split("_")[1]
+    db = Session()
+    direction = db.query(Direction).filter(Direction.id == direction_id).first()
+    if not direction:
+        await callback_query.answer("❌ Yo'nalish topilmadi!")
+        db.close()
+        return
+
+    direction_name = direction.name_uz
+    user_db = db.query(User).filter(User.telegram_id == callback_query.from_user.id).first()
+    if user_db:
+        user_db.direction_id = direction_id
+        db.commit()
+    db.close()
+
+    await callback_query.answer(f"✅ Saqlandi: {direction_name[:30]}")
+    await state.set_state(UserMainMenuStates.main_menu)
+
+    user_fresh = get_user_by_telegram_id(callback_query.from_user.id)
+    dn = user_fresh.direction.name_uz if user_fresh.direction else "—"
+    fn = f"{user_fresh.first_name} {user_fresh.last_name}".strip()
+    db2 = Session()
+    scores = db2.query(Score).filter(Score.user_id == user_fresh.id).all()
+    best = max((s.score for s in scores), default=0)
+    db2.close()
+    text = (
+        f"👤 <b>Profil</b>\n\n"
+        f"• 📝 F.I.SH: {fn}\n"
+        f"• 📱 Telefon: {user_fresh.phone}\n"
+        f"• 📍 Viloyat: {user_fresh.region.name_uz}\n"
+        f"• 📍 Tuman: {user_fresh.district.name_uz}\n"
+        f"• 📚 Yo'nalish: {dn}\n\n"
+        f"• 🧪 Imtihon soni: {len(scores)}\n"
+        f"• 📊 Eng yuqori ball: {best}\n\n"
+        f"<b>Tahrirlash:</b>"
+    )
+    await callback_query.message.edit_text(
+        text, reply_markup=get_profile_settings_keyboard(), parse_mode="HTML"
     )

@@ -42,7 +42,7 @@ async def get_districts_keyboard(region_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-async def get_directions_keyboard(page: int = 0, per_page: int = 10) -> InlineKeyboardMarkup:
+async def get_directions_keyboard(page: int = 0, per_page: int = 20) -> InlineKeyboardMarkup:
     db = Session()
     directions = db.query(Direction).all()
     db.close()
@@ -50,10 +50,11 @@ async def get_directions_keyboard(page: int = 0, per_page: int = 10) -> InlineKe
     start_idx = page * per_page
     end_idx = start_idx + per_page
     page_directions = directions[start_idx:end_idx]
+    total = len(directions)
 
     keyboard = []
     for d in page_directions:
-        name = d.name_uz if len(d.name_uz) <= 30 else d.name_uz[:28] + "…"
+        name = d.name_uz if len(d.name_uz) <= 35 else d.name_uz[:33] + "…"
         keyboard.append([
             InlineKeyboardButton(text=name, callback_data=f"direction_{d.id}")
         ])
@@ -61,17 +62,42 @@ async def get_directions_keyboard(page: int = 0, per_page: int = 10) -> InlineKe
     nav_buttons = []
     if page > 0:
         nav_buttons.append(InlineKeyboardButton(text="⬅️ Oldingi", callback_data=f"direction_page_{page - 1}"))
-    if end_idx < len(directions):
+    if end_idx < total:
         nav_buttons.append(InlineKeyboardButton(text="Keyingi ➡️", callback_data=f"direction_page_{page + 1}"))
     if nav_buttons:
         keyboard.append(nav_buttons)
 
+    # Qidiruv (inline mode) va orqaga tugmalari
+    keyboard.append([InlineKeyboardButton(text="🔍 Qidirish", switch_inline_query_current_chat="yo'nalish: ")])
     keyboard.append([InlineKeyboardButton(text="◀ Orqaga", callback_data="direction_list_back")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
+async def get_direction_search_results(query: str) -> InlineKeyboardMarkup:
+    """Qidiruv natijalarini keyboard sifatida qaytaradi."""
+    db = Session()
+    directions = db.query(Direction).filter(
+        Direction.name_uz.ilike(f"%{query}%")
+    ).limit(20).all()
+    db.close()
+
+    keyboard = []
+    for d in directions:
+        name = d.name_uz if len(d.name_uz) <= 35 else d.name_uz[:33] + "…"
+        keyboard.append([
+            InlineKeyboardButton(text=name, callback_data=f"direction_{d.id}")
+        ])
+
+    if not keyboard:
+        keyboard.append([
+            InlineKeyboardButton(text="❌ Topilmadi", callback_data="direction_search_empty")
+        ])
+
+    keyboard.append([InlineKeyboardButton(text="◀ Ro'yxatga qaytish", callback_data="direction_search_back")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
 async def get_phone_keyboard() -> ReplyKeyboardMarkup:
-    """Faqat telefon tugmasi — bekor qil yo'q"""
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 Telefon raqamni ulash", request_contact=True)]],
         resize_keyboard=True,
@@ -124,7 +150,6 @@ def get_test_results_keyboard() -> ReplyKeyboardMarkup:
 
 
 def get_profile_settings_keyboard() -> InlineKeyboardMarkup:
-    """Profil sozlamalari tugmalari"""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✏️ F.I.SH ni tahrirlash", callback_data="profile_edit_name")],
         [InlineKeyboardButton(text="📚 Yo'nalishni o'zgartirish", callback_data="profile_edit_direction")],

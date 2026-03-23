@@ -3,7 +3,6 @@ import logging
 import os
 import sys
 
-# bot/ papkasini sys.path ga qo'shamiz — import uchun
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from aiogram import Bot, Dispatcher
@@ -29,13 +28,18 @@ async def main():
         from bot.handlers.start import router as start_router
         from bot.handlers.registration import router as registration_router
         from bot.handlers.test import router as test_router
+        from bot.handlers.inline import router as inline_router
 
         dp.include_router(start_router)
         dp.include_router(test_router)
         dp.include_router(registration_router)
+        dp.include_router(inline_router)
 
         logger.info("Bot muvaffaqiyatli ishga tushdi!")
-        await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
+        await dp.start_polling(
+            bot,
+            allowed_updates=["message", "callback_query", "inline_query"]
+        )
     except Exception as e:
         logger.error(f"Bot xatosi: {e}")
         raise
