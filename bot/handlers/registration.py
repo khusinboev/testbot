@@ -475,14 +475,16 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
     if answer != "skip":
         question_id = questions[current_index][0]
         answers[str(current_index)] = answer
-        # to'g'ri signature bilan chaqirish
-        TestService.save_answer(
-            participation_id=participation_id,
-            user_id=callback_query.from_user.id,
-            test_session_id=test_session_id,
-            question_id=question_id,
-            selected_answer=answer
-        )
+        user = get_user_by_telegram_id(callback_query.from_user.id)
+        if user:
+            TestService.save_answer(
+                participation_id=participation_id,
+                user_id=user.id,  # ← users.id (DB)
+                test_session_id=test_session_id,
+                question_id=question_id,
+                selected_answer=answer
+            )
+
     else:
         answers[str(current_index)] = None
 
