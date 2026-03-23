@@ -122,11 +122,11 @@ def seed_regions_and_districts():
             print("Viloyatlar allaqachon bor, o'tkazildi")
             return
         base = os.path.dirname(os.path.abspath(__file__))
-        for r in _load_json(os.path.join(base, 'regions.json')):
+        for r in _load_json(os.path.join(base, 'database', 'regions.json')):
             db.add(Region(id=int(r['id']), name_uz=r['name_uz'],
                           name_oz=r['name_oz'], name_ru=r['name_ru']))
         db.commit()
-        for d in _load_json(os.path.join(base, 'districts.json')):
+        for d in _load_json(os.path.join(base, 'database', 'districts.json')):
             db.add(District(id=int(d['id']), region_id=int(d['region_id']),
                             name_uz=d['name_uz'], name_oz=d['name_oz'],
                             name_ru=d['name_ru']))
