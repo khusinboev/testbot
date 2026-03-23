@@ -1,10 +1,14 @@
 """
 bot/handlers/registration.py  (to'liq yangilangan)
-Yangiliklar:
-  - Kanal obuna tekshiruvi (subscription_gate)
-  - Test davom ettirish (resume test)
-  - Yo'nalish bo'yicha reyting
-  - Yangi check_subscription callback
+
+TUZATILGANLAR:
+  1. start_test_button: aktiv test tekshiruvi to'g'rilandi
+     - get_active_participation endi deadline_at > now shartini tekshiradi
+     - Eski 'completed' participationlar ko'rinmaydi
+  2. confirm_test_start: ikkilamchi tekshiruv ham deadline_at bilan to'g'rilandi
+  3. finish_test_early: state to'g'ri tozalanadi, keyingi test boshlash ishlaydi
+  4. handle_test_answer: test tugaganda state to'g'ri tozalanadi
+  5. test_force_new: eski testni to'liq yakunlab, state tozalab, keyin yangi test
 """
 from aiogram import Router, types, F, Bot
 from aiogram.filters import Command
@@ -30,6 +34,7 @@ from utils.test_service import TestService
 from utils.locks import user_lock, is_processing, throttle_check
 from utils.channel_service import subscription_gate, check_user_subscriptions, build_subscribe_keyboard
 from sqlalchemy.orm import joinedload
+from datetime import datetime
 import logging
 import traceback
 
@@ -44,7 +49,7 @@ def _err(e: Exception) -> str:
 
 # ─── Yordamchi funksiyalar ───────────────────────────────────────────────────
 
-def get_user_by_telegram_id(telegram_id: int) -> User | None:
+def get_user_by_telegram_id(telegram_id: int):
     db = Session()
     user = db.query(User).options(
         joinedload(User.region),
@@ -55,12 +60,12 @@ def get_user_by_telegram_id(telegram_id: int) -> User | None:
     return user
 
 
-def _split_full_name(full_name: str) -> tuple[str, str]:
+def _split_full_name(full_name: str) -> tuple:
     parts = full_name.strip().split(None, 1)
     return parts[0], (parts[1] if len(parts) > 1 else "")
 
 
-def _get_direction_subject_names(direction: Direction) -> tuple[str, str]:
+def _get_direction_subject_names(direction: Direction) -> tuple:
     db = Session()
     try:
         d = db.query(Direction).options(
@@ -310,35 +315,45 @@ async def start_test_button(message: types.Message, state: FSMContext, bot: Bot)
         return
 
     # Aktiv test bor-yo'qligini tekshirish
+    # get_active_participation endi faqat deadline_at > now bo'lganlarni qaytaradi
     active = TestService.get_active_participation(user.id)
+
     if active:
         snapshot = TestService.load_snapshot(active.id)
-        if snapshot:
-            # Vaqt hali tugamaganmi?
-            if active.deadline_at and active.deadline_at > __import__('datetime').datetime.utcnow():
-                remaining = active.deadline_at - __import__('datetime').datetime.utcnow()
-                mins = int(remaining.total_seconds() // 60)
-                secs = int(remaining.total_seconds() % 60)
+        if snapshot and snapshot.get('questions'):
+            remaining = active.deadline_at - datetime.utcnow()
+            mins = int(remaining.total_seconds() // 60)
+            secs = int(remaining.total_seconds() % 60)
 
-                resume_kb = InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(
-                        text="▶️ Davom ettirish",
-                        callback_data="test_resume"
-                    ),
-                    InlineKeyboardButton(
-                        text="🆕 Yangi test",
-                        callback_data="test_force_new"
-                    )
-                ]])
-                await message.answer(
-                    f"⚠️ <b>Sizda tugallanmagan test bor!</b>\n\n"
-                    f"• 🕐 Qolgan vaqt: <b>{mins} daq {secs} sek</b>\n"
-                    f"• 📝 Savol: {snapshot['current_question_index'] + 1}/90\n\n"
-                    f"Davom ettirasizmi yoki yangi test boshlaysizmi?",
-                    reply_markup=resume_kb, parse_mode="HTML"
+            resume_kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="▶️ Davom ettirish",
+                    callback_data="test_resume"
+                ),
+                InlineKeyboardButton(
+                    text="🆕 Yangi test",
+                    callback_data="test_force_new"
                 )
-                return
+            ]])
+            answered = sum(1 for v in snapshot['answers'].values() if v is not None)
+            await message.answer(
+                f"⚠️ <b>Sizda tugallanmagan test bor!</b>\n\n"
+                f"• 🕐 Qolgan vaqt: <b>{mins} daq {secs} sek</b>\n"
+                f"• 📝 Savol: {snapshot['current_question_index'] + 1}/90\n"
+                f"• ✅ Javob berilgan: {answered} ta\n\n"
+                f"Davom ettirasizmi yoki yangi test boshlaysizmi?",
+                reply_markup=resume_kb, parse_mode="HTML"
+            )
+            return
+        else:
+            # Snapshot yo'q yoki bo'sh — bu aktiv participationni yakunlaymiz
+            logger.warning(
+                "Active participation %d found but no snapshot — completing it",
+                active.id
+            )
+            TestService.complete_test(active.id)
 
+    # Yo'nalish belgilanmagan bo'lsa
     if not user.direction_id:
         keyboard = await get_directions_keyboard()
         db = Session()
@@ -356,7 +371,8 @@ async def start_test_button(message: types.Message, state: FSMContext, bot: Bot)
 
 
 @router.callback_query(F.data == "test_resume")
-async def handle_test_resume(callback_query: types.CallbackQuery, state: FSMContext, bot: Bot):
+async def handle_test_resume(callback_query: types.CallbackQuery,
+                               state: FSMContext, bot: Bot):
     """Tugallanmagan testni davom ettirish."""
     user = get_user_by_telegram_id(callback_query.from_user.id)
     if not user:
@@ -366,17 +382,39 @@ async def handle_test_resume(callback_query: types.CallbackQuery, state: FSMCont
     active = TestService.get_active_participation(user.id)
     if not active:
         await callback_query.answer("❌ Aktiv test topilmadi!", show_alert=True)
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
+        # Bosh menyu ko'rsatamiz
+        keyboard = await get_main_menu_keyboard()
+        await callback_query.message.answer("🏠 Bosh menyu", reply_markup=keyboard)
+        await state.set_state(UserMainMenuStates.main_menu)
         return
 
     snapshot = TestService.load_snapshot(active.id)
-    if not snapshot or not snapshot['questions']:
+    if not snapshot or not snapshot.get('questions'):
         await callback_query.answer("❌ Test ma'lumotlari topilmadi!", show_alert=True)
+        TestService.complete_test(active.id)
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
+        keyboard = await get_main_menu_keyboard()
+        await callback_query.message.answer("🏠 Bosh menyu", reply_markup=keyboard)
+        await state.set_state(UserMainMenuStates.main_menu)
         return
 
-    import datetime
-    if active.deadline_at and active.deadline_at <= datetime.datetime.utcnow():
+    if active.deadline_at and active.deadline_at <= datetime.utcnow():
         await callback_query.answer("❌ Test vaqti tugagan!", show_alert=True)
         TestService.complete_test(active.id)
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
+        keyboard = await get_main_menu_keyboard()
+        await callback_query.message.answer("🏠 Bosh menyu", reply_markup=keyboard)
+        await state.set_state(UserMainMenuStates.main_menu)
         return
 
     # State ni tiklash
@@ -397,7 +435,7 @@ async def handle_test_resume(callback_query: types.CallbackQuery, state: FSMCont
     questions   = snapshot['questions']
     current_q   = questions[current_idx]
 
-    remaining = active.deadline_at - datetime.datetime.utcnow()
+    remaining = active.deadline_at - datetime.utcnow()
     mins = int(remaining.total_seconds() // 60)
 
     await callback_query.message.answer(
@@ -418,9 +456,17 @@ async def handle_force_new_test(callback_query: types.CallbackQuery, state: FSMC
         await callback_query.answer("❌ Xato!", show_alert=True)
         return
 
-    active = TestService.get_active_participation(user.id)
-    if active:
-        TestService.complete_test(active.id)
+    # Barcha active participationlarni topib yakunlaymiz
+    db = Session()
+    active_list = db.query(UserTestParticipation).filter(
+        UserTestParticipation.user_id == user.id,
+        UserTestParticipation.status == 'active'
+    ).all()
+    active_ids = [p.id for p in active_list]
+    db.close()
+
+    for p_id in active_ids:
+        TestService.complete_test(p_id)
 
     try:
         await callback_query.message.delete()
@@ -428,7 +474,23 @@ async def handle_force_new_test(callback_query: types.CallbackQuery, state: FSMC
         pass
 
     await callback_query.answer("✅ Eski test yakunlandi")
-    await _show_test_confirmation(callback_query.message, state, user)
+    await state.clear()
+    await state.set_state(UserMainMenuStates.main_menu)
+
+    # Yangi test boshlash uchun to'g'ridan yo'nalish tekshiruviga o'tish
+    if not user.direction_id:
+        keyboard = await get_directions_keyboard()
+        db = Session()
+        total = db.query(Direction).count()
+        db.close()
+        await callback_query.message.answer(
+            f"📚 <b>Ta'lim yo'nalishingizni tanlang</b>\n\n"
+            f"<i>Jami {total} ta yo'nalish mavjud</i>",
+            reply_markup=keyboard, parse_mode="HTML"
+        )
+        await state.set_state(TestSessionStates.waiting_for_direction)
+    else:
+        await _show_test_confirmation(callback_query.message, state, user)
 
 
 async def _show_test_confirmation(message: types.Message, state: FSMContext, user: User):
@@ -534,16 +596,34 @@ async def confirm_test_start(callback_query: types.CallbackQuery,
             await callback_query.answer("❌ Foydalanuvchi topilmadi!", show_alert=True)
             return
 
-        # Aktiv test bor-yo'qligini qayta tekshirish
+        # Aktiv test bor-yo'qligini qayta tekshirish (deadline_at bilan)
         db = Session()
+        now = datetime.utcnow()
         active = db.query(UserTestParticipation).filter(
             UserTestParticipation.user_id == user.id,
-            UserTestParticipation.status == 'active'
+            UserTestParticipation.status == 'active',
+            UserTestParticipation.deadline_at > now
         ).first()
         db.close()
+
         if active:
-            await callback_query.answer("⚠️ Siz allaqachon test boshlagan edingiz!", show_alert=True)
+            await callback_query.answer(
+                "⚠️ Siz allaqachon test boshlagan edingiz! "
+                "Avval uni yakunlang yoki vaqti tugashini kuting.",
+                show_alert=True
+            )
             return
+
+        # Vaqti o'tgan lekin hali 'active' turadigan participationlarni tozalaymiz
+        db2 = Session()
+        stale_list = db2.query(UserTestParticipation).filter(
+            UserTestParticipation.user_id == user.id,
+            UserTestParticipation.status == 'active'
+        ).all()
+        stale_ids = [p.id for p in stale_list]
+        db2.close()
+        for stale_id in stale_ids:
+            TestService.complete_test(stale_id)
 
         try:
             participation = TestService.create_participation(user.id, user.direction_id)
@@ -639,10 +719,65 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
         if not questions or participation_id is None:
             await callback_query.answer("❌ Test ma'lumotlari topilmadi.", show_alert=True)
             await state.clear()
+            await state.set_state(UserMainMenuStates.main_menu)
+            keyboard = await get_main_menu_keyboard()
+            await callback_query.message.answer("🏠 Bosh menyu", reply_markup=keyboard)
             return
         if current_index >= len(questions):
             await callback_query.answer()
             return
+
+        # Vaqt tekshiruvi
+        db_check = Session()
+        participation_check = db_check.query(UserTestParticipation).filter(
+            UserTestParticipation.id == participation_id
+        ).first()
+        db_check.close()
+
+        if participation_check and participation_check.status == 'completed':
+            # Test allaqachon yakunlangan (masalan scheduler tomonidan)
+            await callback_query.answer(
+                "⏰ Test vaqti tugagan yoki allaqachon yakunlangan!",
+                show_alert=True
+            )
+            try:
+                await callback_query.message.delete()
+            except Exception:
+                pass
+            await state.clear()
+            await state.set_state(UserMainMenuStates.main_menu)
+            keyboard = await get_main_menu_keyboard()
+            await callback_query.message.answer(
+                "🏠 Test yakunlandi. Bosh menyu:", reply_markup=keyboard
+            )
+            return
+
+        if participation_check and participation_check.deadline_at:
+            if participation_check.deadline_at <= datetime.utcnow():
+                # Vaqt tugagan — avtomatik yakunlash
+                score_info = TestService.complete_test(participation_id)
+                try:
+                    await callback_query.message.delete()
+                except Exception:
+                    pass
+                await state.clear()
+                await state.set_state(UserMainMenuStates.main_menu)
+                if score_info:
+                    pct = (score_info['correct_count'] / score_info['total_questions'] * 100
+                           if score_info['total_questions'] > 0 else 0)
+                    result_text = (
+                        f"⏰ <b>Vaqt tugadi! Test avtomatik yakunlandi.</b>\n\n"
+                        f"• 📈 Ball: <b>{score_info['score']}</b>\n"
+                        f"• ✅ To'g'ri: {score_info['correct_count']}/{score_info['total_questions']}\n"
+                        f"• 📊 Foiz: {pct:.1f}%"
+                    )
+                else:
+                    result_text = "⏰ Test vaqti tugadi!"
+                await callback_query.message.answer(
+                    result_text, reply_markup=get_test_results_keyboard(), parse_mode="HTML"
+                )
+                await callback_query.answer()
+                return
 
         current_q = questions[current_index]
 
@@ -666,11 +801,17 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
         TestService.save_snapshot(participation_id, questions, current_index, answers)
 
         if current_index >= len(questions):
+            # Test tugadi
             score_info = TestService.complete_test(participation_id)
             try:
                 await callback_query.message.delete()
             except Exception:
                 pass
+
+            # State ni tozalash va bosh menyu ga qaytarish
+            await state.clear()
+            await state.set_state(UserMainMenuStates.main_menu)
+
             if score_info:
                 pct = (score_info['correct_count'] / score_info['total_questions'] * 100
                        if score_info['total_questions'] > 0 else 0)
@@ -686,7 +827,6 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
             await callback_query.message.answer(
                 result_text, reply_markup=get_test_results_keyboard(), parse_mode="HTML"
             )
-            await state.set_state(UserMainMenuStates.main_menu)
         else:
             next_q = questions[current_index]
             await state.update_data(current_question_index=current_index, answers=answers)
@@ -715,13 +855,21 @@ async def finish_test_early(callback_query: types.CallbackQuery, state: FSMConte
         if not participation_id:
             await callback_query.answer("❌ Test ma'lumotlari yo'q.", show_alert=True)
             await state.clear()
+            await state.set_state(UserMainMenuStates.main_menu)
+            keyboard = await get_main_menu_keyboard()
+            await callback_query.message.answer("🏠 Bosh menyu", reply_markup=keyboard)
             return
 
         score_info = TestService.complete_test(participation_id)
+
         try:
             await callback_query.message.delete()
         except Exception:
             pass
+
+        # MUHIM: Avval state ni tozalaymiz, keyin yangi state set qilamiz
+        await state.clear()
+        await state.set_state(UserMainMenuStates.main_menu)
 
         if score_info:
             pct = (score_info['correct_count'] / score_info['total_questions'] * 100
@@ -738,8 +886,6 @@ async def finish_test_early(callback_query: types.CallbackQuery, state: FSMConte
         await callback_query.message.answer(
             result_text, reply_markup=get_test_results_keyboard(), parse_mode="HTML"
         )
-        await state.clear()
-        await state.set_state(UserMainMenuStates.main_menu)
         await callback_query.answer()
 
 
@@ -787,20 +933,13 @@ async def show_leaderboard(message: types.Message, state: FSMContext):
 
     db = Session()
     try:
-        # Agar user yo'nalishi belgilangan bo'lsa — yo'nalish reytingi
         if user.direction_id and user.direction:
             direction_name = user.direction.name_uz
-
-            # Foydalanuvchining o'rni
             rank = TestService.get_user_direction_rank(user.id, user.direction_id)
-
-            # User's best score
             user_best = db.query(Score).filter(
                 Score.user_id == user.id
             ).order_by(Score.score.desc()).first()
             user_best_score = user_best.score if user_best else 0
-
-            # Top 5 yo'nalish bo'yicha
             top_scores = TestService.get_direction_leaderboard(user.direction_id, limit=5)
 
             text = (
@@ -826,7 +965,6 @@ async def show_leaderboard(message: types.Message, state: FSMContext):
                 f"📊 <b>Eng yuqori ballingiz:</b> {user_best_score}"
             )
 
-            # Umumiy reyting tugmasi
             kb = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(
                     text="🌐 Umumiy reyting (top 10)",
@@ -835,7 +973,6 @@ async def show_leaderboard(message: types.Message, state: FSMContext):
             ]])
             await message.answer(text, parse_mode="HTML", reply_markup=kb)
         else:
-            # Yo'nalish belgilanmagan — umumiy reyting
             await _show_global_leaderboard(message, db)
     finally:
         db.close()
@@ -1151,7 +1288,7 @@ async def test_direction_search_selected(callback_query: types.CallbackQuery, st
     await _show_test_confirmation(callback_query.message, state, user)
 
 
-# Profil qidiruv handlerlari (avvalgidek)
+# Profil qidiruv handlerlari
 @router.callback_query(ProfileEditStates.edit_direction, F.data == "direction_search")
 async def profile_direction_search_start(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.message.edit_text(

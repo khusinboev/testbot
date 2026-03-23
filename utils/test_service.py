@@ -3,6 +3,11 @@ utils/test_service.py
 - Snapshot: test davomida savollar va javoblarni DB ga saqlaydi
 - Deadline: participation yaratilganda deadline_at belgilanadi
 - Auto-finish: scheduler bu servisni chaqiradi
+
+TUZATILGANLAR:
+  - get_active_participation: faqat deadline_at kelmagan va status='active' bo'lganlarni qaytaradi
+  - complete_test: har safar yangi Session ochadi, cache muammosini oldini oladi
+  - get_expired_participations: to'g'ri ishlaydi
 """
 from datetime import datetime, timedelta
 from database.db import Session
@@ -83,15 +88,39 @@ class TestService:
         return result
 
     @staticmethod
-    def get_active_participation(user_id: int) -> UserTestParticipation | None:
-        """Foydalanuvchining aktiv participation ni qaytaradi."""
+    def get_active_participation(user_id: int):
+        """
+        Foydalanuvchining haqiqiy aktiv participation ni qaytaradi.
+        - status='active' bo'lishi shart
+        - deadline_at kelmagan bo'lishi shart (vaqti o'tmagan)
+        - Har safar yangi Session ochadi (cache muammosini oldini olish uchun)
+        """
         db = Session()
-        p = db.query(UserTestParticipation).filter(
-            UserTestParticipation.user_id == user_id,
-            UserTestParticipation.status == 'active'
-        ).order_by(UserTestParticipation.started_at.desc()).first()
-        db.close()
-        return p
+        try:
+            now = datetime.utcnow()
+            p = db.query(UserTestParticipation).filter(
+                UserTestParticipation.user_id == user_id,
+                UserTestParticipation.status == 'active',
+                UserTestParticipation.deadline_at > now
+            ).order_by(UserTestParticipation.started_at.desc()).first()
+
+            if p is None:
+                return None
+
+            # Lazy loading muammosini oldini olish — zarur maydonlarni oldindan yuklaymiz
+            p_id = p.id
+            db.close()
+
+            # Yangi session bilan qaytadan olish
+            db2 = Session()
+            result = db2.query(UserTestParticipation).filter(
+                UserTestParticipation.id == p_id
+            ).first()
+            db2.close()
+            return result
+        except Exception:
+            db.close()
+            return None
 
     @staticmethod
     def save_snapshot(participation_id: int, questions: list,
@@ -114,23 +143,25 @@ class TestService:
             db.close()
 
     @staticmethod
-    def load_snapshot(participation_id: int) -> dict | None:
+    def load_snapshot(participation_id: int):
         """DB dagi snapshot ni qaytaradi."""
         db = Session()
-        p = db.query(UserTestParticipation).filter(
-            UserTestParticipation.id == participation_id
-        ).first()
-        db.close()
-        if not p or not p.snapshot_questions:
-            return None
-        return {
-            'participation_id': p.id,
-            'test_session_id':  p.test_session_id,
-            'questions':        p.snapshot_questions,
-            'current_question_index': p.snapshot_current_index or 0,
-            'answers':          p.snapshot_answers or {},
-            'deadline_at':      p.deadline_at,
-        }
+        try:
+            p = db.query(UserTestParticipation).filter(
+                UserTestParticipation.id == participation_id
+            ).first()
+            if not p or not p.snapshot_questions:
+                return None
+            return {
+                'participation_id': p.id,
+                'test_session_id':  p.test_session_id,
+                'questions':        p.snapshot_questions,
+                'current_question_index': p.snapshot_current_index or 0,
+                'answers':          p.snapshot_answers or {},
+                'deadline_at':      p.deadline_at,
+            }
+        finally:
+            db.close()
 
     # ──────────────────────────────────────────────────────────────
     # Questions
@@ -293,7 +324,15 @@ class TestService:
         return round(total_score, 2)
 
     @staticmethod
-    def complete_test(participation_id: int) -> dict | None:
+    def complete_test(participation_id: int):
+        """
+        Testni yakunlaydi va Score yozadi.
+
+        TUZATILDI:
+        - Har safar yangi Session ochadi
+        - status='completed' bo'lsa, avvalgi Score ni qaytaradi (takroriy chaqiruvdan himoya)
+        - Snapshot har doim tozalanadi
+        """
         db = Session()
         try:
             participation = db.query(UserTestParticipation).filter(
@@ -301,8 +340,9 @@ class TestService:
             ).first()
             if not participation:
                 return None
+
+            # Avval tugallangan bo'lsa — mavjud scoreni qaytaramiz
             if participation.status == 'completed':
-                # Avval tugallangan — Score dan qaytarish
                 score_obj = db.query(Score).filter(
                     Score.participation_id == participation_id
                 ).first()
@@ -318,7 +358,7 @@ class TestService:
 
             participation.status       = 'completed'
             participation.completed_at = datetime.utcnow()
-            # Snapshotni tozalash
+            # Snapshotni tozalash — muhim! shu participation endi ko'rinmasin
             participation.snapshot_questions     = None
             participation.snapshot_current_index = 0
             participation.snapshot_answers       = None
@@ -329,7 +369,6 @@ class TestService:
                 UserAnswer.is_correct.is_(True)
             ).count()
 
-            # Total savollar soni — snapshot yoki config dan
             total_count = db.query(UserAnswer).filter(
                 UserAnswer.participation_id == participation_id
             ).count()
