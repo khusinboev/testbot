@@ -36,8 +36,8 @@ async def main():
 
         # Register handlers
         dp.include_router(start_router)
-        dp.include_router(registration_router)
-        dp.include_router(test_router)
+        dp.include_router(test_router)  # ← avval
+        dp.include_router(registration_router)  # ← keyin
 
         # Start polling
         logger.info("Bot started successfully! Polling for updates...")

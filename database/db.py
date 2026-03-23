@@ -42,6 +42,24 @@ def init_db():
     seed_subjects()
     seed_regions_and_districts()
     seed_directions_from_pdf()
+    seed_default_admin()  # ← QO'SHING
+
+def seed_default_admin():
+    from .models import Admin
+    db = Session()
+    try:
+        if db.query(Admin).first():
+            return
+        admin = Admin(telegram_id=0, role='super_admin')  # placeholder
+        db.add(admin)
+        db.commit()
+        print("Default admin seeded")
+    except Exception as e:
+        db.rollback()
+        print(f"Admin seed error: {e}")
+    finally:
+        db.close()
+
 
 def seed_subjects():
     """Seed basic subjects"""

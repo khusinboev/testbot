@@ -1,29 +1,35 @@
 from datetime import datetime, timedelta
 from database.db import Session
 from database.models import (
-    Question, Direction, Subject, UserTestParticipation, 
-    UserAnswer, Leaderboard, TestSession, User, Score
+    Question, Direction, Subject, UserTestParticipation,
+    UserAnswer, Leaderboard, TestSession, User, Score, Admin
 )
 from sqlalchemy import func, and_
 import config
 
 class TestService:
     """Service for managing test sessions and scoring"""
-    
+
     @staticmethod
     def get_or_create_test_session() -> TestSession:
-        """Get or create today's test session"""
         db = Session()
         today = datetime.utcnow().date()
-        
+
         test_session = db.query(TestSession).filter(
             func.date(TestSession.exam_date) == today,
             TestSession.status == 'active'
         ).first()
-        
+
         if not test_session:
+            # Admin topish yoki yaratish
+            admin = db.query(Admin).first()
+            if not admin:
+                admin = Admin(telegram_id=0, role='super_admin')
+                db.add(admin)
+                db.flush()  # id olish uchun
+
             test_session = TestSession(
-                admin_id=1,  # Default admin
+                admin_id=admin.id,  # ← 1 emas, real ID
                 exam_date=datetime.utcnow(),
                 start_time=datetime.utcnow(),
                 duration_minutes=config.TEST_DURATION_MINUTES,
@@ -31,9 +37,15 @@ class TestService:
             )
             db.add(test_session)
             db.commit()
-        
+
+        session_id = test_session.id
         db.close()
-        return test_session
+
+        # Yopilgan sessiondan qayta olish
+        db2 = Session()
+        result = db2.query(TestSession).filter(TestSession.id == session_id).first()
+        db2.close()
+        return result
     
     @staticmethod
     def create_participation(user_id: int, direction_id: str) -> UserTestParticipation:

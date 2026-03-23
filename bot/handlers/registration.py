@@ -13,6 +13,7 @@ from bot.keyboards import (
     get_main_menu_keyboard
 )
 from utils.test_service import TestService
+from sqlalchemy.orm import joinedload
 import re
 
 router = Router()
@@ -21,9 +22,9 @@ def get_user_by_telegram_id(telegram_id: int) -> User:
     """Get user from database by telegram ID with relationships loaded"""
     db = Session()
     user = db.query(User).options(
-        db.joinedload(User.region),
-        db.joinedload(User.district),
-        db.joinedload(User.direction)
+        joinedload(User.region),      # ← db.joinedload emas
+        joinedload(User.district),
+        joinedload(User.direction)
     ).filter(User.telegram_id == telegram_id).first()
     db.close()
     return user
@@ -254,6 +255,60 @@ async def process_direction_page(callback_query: types.CallbackQuery, state: FSM
         ]
     ])
     
+    await callback_query.message.edit_text(
+        confirmation_text,
+        reply_markup=confirm_keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(UserRegistrationStates.confirmation)
+
+@router.callback_query(UserRegistrationStates.waiting_for_direction, F.data.startswith("direction_"))
+async def process_direction_selection(callback_query: types.CallbackQuery, state: FSMContext):
+    """Yo'nalish tanlash"""
+    # direction_page_ va direction_back ni o'tkazib yuborish
+    if "_page_" in callback_query.data or callback_query.data == "direction_back":
+        return
+
+    direction_id = callback_query.data.split("_")[1]
+
+    db = Session()
+    direction = db.query(Direction).filter(Direction.id == direction_id).first()
+    db.close()
+
+    if not direction:
+        await callback_query.answer("❌ Yo'nalish topilmadi!")
+        return
+
+    await state.update_data(direction_id=direction_id)
+
+    data = await state.get_data()
+
+    # Region va district nomlarini olish
+    db2 = Session()
+    region = db2.query(Region).filter(Region.id == data.get('region_id')).first()
+    district = db2.query(District).filter(District.id == data.get('district_id')).first()
+    db2.close()
+
+    confirmation_text = f"""
+✅ <b>Ro'yxatdan o'tish tasdiqlash</b>
+
+<b>Sizning ma'lumotlar:</b>
+- 👤 Ism: {data['first_name']} {data['last_name']}
+- 📱 Telefon: {data['phone']}
+- 📍 Viloyat: {region.name_uz if region else '—'}
+- 📍 Tuman: {district.name_uz if district else '—'}
+- 📚 Yo'nalish: {direction.name_uz}
+
+<b>Ro'yxatdan o'tishni tasdiqlaysizmi?</b>
+"""
+
+    confirm_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Ha", callback_data="confirm_yes"),
+            InlineKeyboardButton(text="❌ Yo'q", callback_data="confirm_no")
+        ]
+    ])
+
     await callback_query.message.edit_text(
         confirmation_text,
         reply_markup=confirm_keyboard,
@@ -519,29 +574,24 @@ D) {question.option_d}
     except Exception as e:
         await callback_query.answer(f"❌ Xato: {str(e)}", show_alert=True)
 
+
 @router.callback_query(TestSessionStates.test_confirmation, F.data == "test_cancel")
 async def cancel_test(callback_query: types.CallbackQuery, state: FSMContext):
     """Cancel test start"""
-    user = get_user_by_telegram_id(callback_query.from_user.id)
-    
-    db = Session()
     try:
-        db.close()
         await callback_query.message.delete()
-        
         await state.set_state(UserMainMenuStates.main_menu)
-        user = db.query(User).filter(User.telegram_id == callback_query.from_user.id).first()
+
+        user = get_user_by_telegram_id(callback_query.from_user.id)
         keyboard = await get_main_menu_keyboard()
-        
+
         await callback_query.message.answer(
-            f"Bosh menyu\n\nAssalomu alaykum, <b>{user.first_name} {user.last_name}</b>!",
+            f"🏠 Bosh menyu\n\nAssalomu alaykum, <b>{user.first_name} {user.last_name}</b>!",
             reply_markup=keyboard,
             parse_mode="HTML"
         )
     except Exception as e:
         await callback_query.answer(f"❌ Xato: {str(e)}", show_alert=True)
-    finally:
-        db.close()
 
 @router.callback_query(TestSessionStates.test_active, F.data.startswith("answer_"))
 async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMContext):
