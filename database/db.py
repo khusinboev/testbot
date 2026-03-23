@@ -3,7 +3,6 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import StaticPool
 import config
 
-# Create engine
 engine = create_engine(
     config.DATABASE_URL,
     poolclass=StaticPool,
@@ -12,37 +11,38 @@ engine = create_engine(
     } if config.DATABASE_URL.startswith('sqlite') else {}
 )
 
-# Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Create scoped session for thread safety
 Session = scoped_session(SessionLocal)
 
+
 def get_db():
-    """Dependency to get database session"""
     db = Session()
     try:
         yield db
     finally:
         db.close()
 
+
 def create_tables():
-    """Create all tables defined in models"""
     from .models import Base
     Base.metadata.create_all(bind=engine)
 
+
 def drop_tables():
-    """Drop all tables (for testing/reset)"""
     from .models import Base
     Base.metadata.drop_all(bind=engine)
 
+
 def init_db():
-    """Initialize database with tables and seed data"""
+    """Jadvalllarni yaratib, seed ma'lumotlarini qo'shadi."""
     create_tables()
+    seed_default_admin()
     seed_subjects()
     seed_regions_and_districts()
-    seed_directions_from_pdf()
-    seed_default_admin()  # ← QO'SHING
+    seed_directions_from_excel()
+
+
+# ─── Seed funksiyalari ────────────────────────────────────────────────────────
 
 def seed_default_admin():
     from .models import Admin
@@ -50,164 +50,122 @@ def seed_default_admin():
     try:
         if db.query(Admin).first():
             return
-        admin = Admin(telegram_id=0, role='super_admin')  # placeholder
-        db.add(admin)
+        db.add(Admin(telegram_id=0, role='super_admin'))
         db.commit()
-        print("Default admin seeded")
+        print("✅ Default admin qo'shildi")
     except Exception as e:
         db.rollback()
-        print(f"Admin seed error: {e}")
+        print(f"❌ Admin seed xato: {e}")
     finally:
         db.close()
 
 
 def seed_subjects():
-    """Seed basic subjects"""
     from .models import Subject
-    
     db = Session()
-    
     try:
-        # Check if already seeded
         if db.query(Subject).first():
-            print("Subjects already seeded, skipping...")
+            print("Fanlar allaqachon bor, o'tkazildi")
             return
-        
-        subjects_data = [
-            {'id': 1, 'name_uz': 'Matematika', 'name_oz': 'Matematika', 'name_ru': 'Математика', 'points_per_question': 1.1},
-            {'id': 2, 'name_uz': 'Fizika', 'name_oz': 'Fizika', 'name_ru': 'Физика', 'points_per_question': 3.1},
-            {'id': 3, 'name_uz': 'Kimyo', 'name_oz': 'Kimyo', 'name_ru': 'Химия', 'points_per_question': 3.1},
-            {'id': 4, 'name_uz': 'Biologiya', 'name_oz': 'Biologiya', 'name_ru': 'Биология', 'points_per_question': 3.1},
-            {'id': 5, 'name_uz': 'Tarix', 'name_oz': 'Tarix', 'name_ru': 'История', 'points_per_question': 1.1},
-            {'id': 6, 'name_uz': 'Ona tili', 'name_oz': 'Ona tili', 'name_ru': 'Родной язык', 'points_per_question': 1.1},
-            {'id': 7, 'name_uz': 'Adabiyot', 'name_oz': 'Adabiyot', 'name_ru': 'Литература', 'points_per_question': 2.1},
-            {'id': 8, 'name_uz': 'Geografiya', 'name_oz': 'Geografiya', 'name_ru': 'География', 'points_per_question': 2.1},
-            {'id': 9, 'name_uz': 'Ingliz tili', 'name_oz': 'Ingliz tili', 'name_ru': 'Английский язык', 'points_per_question': 2.1},
-            {'id': 10, 'name_uz': 'Rus tili', 'name_oz': 'Rus tili', 'name_ru': 'Русский язык', 'points_per_question': 2.1},
+
+        subjects = [
+            (1,  'Matematika',  'Matematika',  'Математика',     1.1),
+            (2,  'Fizika',      'Fizika',       'Физика',         3.1),
+            (3,  'Kimyo',       'Kimyo',        'Химия',          3.1),
+            (4,  'Biologiya',   'Biologiya',    'Биология',       3.1),
+            (5,  'Tarix',       'Tarix',        'История',        1.1),
+            (6,  'Ona tili',    'Ona tili',     'Родной язык',    1.1),
+            (7,  'Adabiyot',    'Adabiyot',     'Литература',     2.1),
+            (8,  'Geografiya',  'Geografiya',   'География',      2.1),
+            (9,  'Ingliz tili', 'Ingliz tili',  'Английский язык',2.1),
+            (10, 'Rus tili',    'Rus tili',     'Русский язык',   2.1),
         ]
-        
-        for subject_data in subjects_data:
-            subject = Subject(
-                id=subject_data['id'],
-                name_uz=subject_data['name_uz'],
-                name_oz=subject_data['name_oz'],
-                name_ru=subject_data['name_ru'],
-                points_per_question=subject_data['points_per_question']
-            )
-            db.add(subject)
-        
+        for sid, uz, oz, ru, pts in subjects:
+            db.add(Subject(id=sid, name_uz=uz, name_oz=oz, name_ru=ru, points_per_question=pts))
         db.commit()
-        print("Successfully seeded subjects")
-        
+        print(f"✅ {len(subjects)} ta fan qo'shildi")
     except Exception as e:
         db.rollback()
-        print(f"Error seeding subjects: {e}")
+        print(f"❌ Fan seed xato: {e}")
     finally:
         db.close()
 
+
 def seed_regions_and_districts():
-    """Seed regions and districts from JSON files"""
     import json
     import os
     from .models import Region, District
-    
+
     db = Session()
-    
     try:
-        # Check if already seeded
         if db.query(Region).first():
-            print("Regions already seeded, skipping...")
+            print("Viloyatlar allaqachon bor, o'tkazildi")
             return
-        
-        # Load regions
-        regions_file = os.path.join(os.path.dirname(__file__), '..', 'regions.json')
-        with open(regions_file, 'r', encoding='cp1251') as f:
-            regions_data = json.load(f)
-        
-        regions_map = {}
-        for region_data in regions_data:
-            region = Region(
-                id=int(region_data['id']),
-                name_uz=region_data['name_uz'],
-                name_oz=region_data['name_oz'],
-                name_ru=region_data['name_ru']
-            )
-            db.add(region)
-            regions_map[region.id] = region
-        
+
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        # Viloyatlar
+        with open(os.path.join(base, 'regions.json'), 'r', encoding='cp1251') as f:
+            for r in json.load(f):
+                db.add(Region(
+                    id=int(r['id']),
+                    name_uz=r['name_uz'],
+                    name_oz=r['name_oz'],
+                    name_ru=r['name_ru']
+                ))
         db.commit()
-        
-        # Load districts
-        districts_file = os.path.join(os.path.dirname(__file__), '..', 'districts.json')
-        with open(districts_file, 'r', encoding='cp1251') as f:
-            districts_data = json.load(f)
-        
-        for district_data in districts_data:
-            district = District(
-                id=int(district_data['id']),
-                region_id=int(district_data['region_id']),
-                name_uz=district_data['name_uz'],
-                name_oz=district_data['name_oz'],
-                name_ru=district_data['name_ru']
-            )
-            db.add(district)
-        
+
+        # Tumanlar
+        with open(os.path.join(base, 'districts.json'), 'r', encoding='cp1251') as f:
+            for d in json.load(f):
+                db.add(District(
+                    id=int(d['id']),
+                    region_id=int(d['region_id']),
+                    name_uz=d['name_uz'],
+                    name_oz=d['name_oz'],
+                    name_ru=d['name_ru']
+                ))
         db.commit()
-        print("Successfully seeded regions and districts")
-        
+        print("✅ Viloyat va tumanlar qo'shildi")
     except Exception as e:
         db.rollback()
-        print(f"Error seeding regions and districts: {e}")
+        print(f"❌ Viloyat/tuman seed xato: {e}")
     finally:
         db.close()
 
-def seed_directions_from_pdf():
-    """Seed directions from PDF parsing"""
-    import sys
-    import os
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from utils.pdf_parser import parse_directions_from_pdf, get_subject_id_from_name
-    
+
+def seed_directions_from_excel():
+    """Excel fayllardan yo'nalishlarni o'qib bazaga yozadi."""
+    from .models import Direction
+    from utils.excel_parser import parse_directions_from_excel
+
     db = Session()
-    
     try:
-        # Check if already seeded
-        from .models import Direction
         if db.query(Direction).first():
-            print("Directions already seeded, skipping...")
+            print("Yo'nalishlar allaqachon bor, o'tkazildi")
             return
-        
-        directions = parse_directions_from_pdf()
-        seeded_codes = set()
-        
-        for direction_data in directions:
-            # Skip if subject names are just numbers (parsing errors)
-            if direction_data['subject1'].isdigit() or direction_data['subject2'].isdigit():
-                continue
-            
-            # Skip if we've already seeded this code
-            if direction_data['code'] in seeded_codes:
-                continue
-                
-            subject1_id = get_subject_id_from_name(direction_data['subject1'])
-            subject2_id = get_subject_id_from_name(direction_data['subject2'])
-            
-            direction = Direction(
-                id=direction_data['code'],
-                name_uz=direction_data['name'],
-                name_oz=direction_data['name'],
-                name_ru=direction_data['name'],  # For now, use same name
-                subject1_id=subject1_id,
-                subject2_id=subject2_id
-            )
-            db.add(direction)
-            seeded_codes.add(direction_data['code'])
-        
+
+        directions = parse_directions_from_excel()
+        if not directions:
+            print("❌ Yo'nalish ma'lumotlari topilmadi")
+            return
+
+        count = 0
+        for d in directions:
+            db.add(Direction(
+                id=d['code'],
+                name_uz=d['name'],
+                name_oz=d['name'],
+                name_ru=d['name'],
+                subject1_id=d['subject1_id'],
+                subject2_id=d['subject2_id'],
+            ))
+            count += 1
+
         db.commit()
-        print(f"Successfully seeded {len(seeded_codes)} unique directions from PDF")
-        
+        print(f"✅ {count} ta yo'nalish qo'shildi")
     except Exception as e:
         db.rollback()
-        print(f"Error seeding directions: {e}")
+        print(f"❌ Yo'nalish seed xato: {e}")
     finally:
         db.close()
