@@ -1,9 +1,9 @@
 from aiogram import Router, types, F
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ContentType, InlineKeyboardMarkup, InlineKeyboardButton
 from database.db import Session
-from database.models import User, Region, District, Direction, Score
+from database.models import User, Region, District, Direction, Score, UserTestParticipation
 from bot.states import UserRegistrationStates, UserMainMenuStates, TestSessionStates
 from bot.keyboards import (
     get_regions_keyboard,
@@ -13,6 +13,7 @@ from bot.keyboards import (
     get_main_menu_keyboard
 )
 from utils.test_service import TestService
+from utils.locks import user_lock, is_processing, throttle_check
 from sqlalchemy.orm import joinedload
 import re
 
@@ -60,7 +61,6 @@ async def show_main_menu(message: types.Message, state: FSMContext, user: User):
 
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
-    """StateFilter yo'q — har qanday holatda /start ishlaydi"""
     await state.clear()
     user = get_user_by_telegram_id(message.from_user.id)
     if user:
@@ -166,7 +166,6 @@ async def process_district_selection(callback_query: types.CallbackQuery, state:
 
 @router.callback_query(UserRegistrationStates.waiting_for_direction, F.data.startswith("direction_page_"))
 async def process_direction_page(callback_query: types.CallbackQuery, state: FSMContext):
-    """Sahifalar o'rtasida o'tish — FAQAT shu, boshqa kod yo'q"""
     page = int(callback_query.data.split("_")[2])
     data = await state.get_data()
     district_id = data.get('district_id')
@@ -192,7 +191,6 @@ async def process_direction_page(callback_query: types.CallbackQuery, state: FSM
 
 @router.callback_query(UserRegistrationStates.waiting_for_direction, F.data.startswith("direction_"))
 async def process_direction_selection(callback_query: types.CallbackQuery, state: FSMContext):
-    """Yo'nalish tanlash — direction_page_ va direction_back ni o'tkazib yuborish"""
     if "_page_" in callback_query.data or callback_query.data == "direction_back":
         return
 
@@ -235,39 +233,52 @@ async def process_direction_selection(callback_query: types.CallbackQuery, state
 
 @router.callback_query(UserRegistrationStates.confirmation)
 async def process_confirmation(callback_query: types.CallbackQuery, state: FSMContext):
+    if is_processing(callback_query.from_user.id):
+        await callback_query.answer("⏳ Iltimos kuting...")
+        return
+
     if callback_query.data == "confirm_no":
         await callback_query.message.edit_text("❌ Ro'yxatdan o'tish bekor qilindi.")
         await state.clear()
         await callback_query.message.answer("Qayta boshlash uchun /start buyrug'ini yuboring.")
         return
 
-    data = await state.get_data()
-    db = Session()
-    try:
-        new_user = User(
-            telegram_id=callback_query.from_user.id,
-            first_name=data['first_name'],
-            last_name=data['last_name'],
-            phone=data['phone'],
-            region_id=data['region_id'],
-            district_id=data['district_id'],
-            direction_id=data['direction_id']
-        )
-        db.add(new_user)
-        db.commit()
-        await callback_query.answer("✅ Ro'yxatdan o'tish tugallandi!", show_alert=True)
-        user = db.query(User).options(
-            joinedload(User.region),
-            joinedload(User.district),
-            joinedload(User.direction)
-        ).filter(User.telegram_id == callback_query.from_user.id).first()
-        await state.clear()
-        await show_main_menu(callback_query.message, state, user)
-    except Exception as e:
-        db.rollback()
-        await callback_query.answer(f"❌ Xato: {str(e)}", show_alert=True)
-    finally:
-        db.close()
+    async with user_lock(callback_query.from_user.id):
+        # Ikki marta ro'yxatdan o'tishni oldini olish
+        existing = get_user_by_telegram_id(callback_query.from_user.id)
+        if existing:
+            await callback_query.answer("✅ Siz allaqachon ro'yxatdan o'tgansiz!", show_alert=True)
+            await state.clear()
+            await show_main_menu(callback_query.message, state, existing)
+            return
+
+        data = await state.get_data()
+        db = Session()
+        try:
+            new_user = User(
+                telegram_id=callback_query.from_user.id,
+                first_name=data['first_name'],
+                last_name=data['last_name'],
+                phone=data['phone'],
+                region_id=data['region_id'],
+                district_id=data['district_id'],
+                direction_id=data['direction_id']
+            )
+            db.add(new_user)
+            db.commit()
+            await callback_query.answer("✅ Ro'yxatdan o'tish tugallandi!", show_alert=True)
+            user = db.query(User).options(
+                joinedload(User.region),
+                joinedload(User.district),
+                joinedload(User.direction)
+            ).filter(User.telegram_id == callback_query.from_user.id).first()
+            await state.clear()
+            await show_main_menu(callback_query.message, state, user)
+        except Exception as e:
+            db.rollback()
+            await callback_query.answer(f"❌ Xato: {str(e)}", show_alert=True)
+        finally:
+            db.close()
 
 
 # ─── Asosiy menyu ─────────────────────────────────────────────────────────────
@@ -408,42 +419,63 @@ async def show_help(message: types.Message, state: FSMContext):
 
 @router.callback_query(TestSessionStates.test_confirmation, F.data == "test_start_confirm")
 async def confirm_test_start(callback_query: types.CallbackQuery, state: FSMContext):
-    user = get_user_by_telegram_id(callback_query.from_user.id)
-    if not user:
-        await callback_query.answer("❌ Foydalanuvchi topilmadi!", show_alert=True)
-        return
-    try:
-        participation = TestService.create_participation(user.id, user.direction_id)
-        questions = TestService.get_test_questions(user.direction_id)
+    uid = callback_query.from_user.id
 
-        if not questions:
-            await callback_query.answer("❌ Savollar topilmadi!", show_alert=True)
+    if is_processing(uid):
+        await callback_query.answer("⏳ Test boshlanmoqda, kuting...")
+        return
+
+    async with user_lock(uid):
+        user = get_user_by_telegram_id(uid)
+        if not user:
+            await callback_query.answer("❌ Foydalanuvchi topilmadi!", show_alert=True)
             return
 
-        # state ga participation.test_session_id ham saqlaymiz
-        await state.update_data(
-            participation_id=participation.id,
-            test_session_id=participation.test_session_id,  # ← to'g'rilandi
-            questions=[(q.id, q.text_uz, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_answer) for q in questions],
-            current_question_index=0,
-            answers={}
-        )
+        # Internet uzilganda qayta bosish — aktiv participation bor-yo'qligini tekshirish
+        db = Session()
+        active = db.query(UserTestParticipation).filter(
+            UserTestParticipation.user_id == user.id,
+            UserTestParticipation.status == 'active'
+        ).first()
+        db.close()
 
-        await callback_query.message.delete()
-        question = questions[0]
-        question_text = (
-            f"<b>Savol #1/{len(questions)}</b>\n\n"
-            f"{question.text_uz}\n\n"
-            f"A) {question.option_a}\n"
-            f"B) {question.option_b}\n"
-            f"C) {question.option_c}\n"
-            f"D) {question.option_d}"
-        )
-        from bot.keyboards import get_test_answer_keyboard
-        await callback_query.message.answer(question_text, reply_markup=get_test_answer_keyboard(), parse_mode="HTML")
-        await state.set_state(TestSessionStates.test_active)
-    except Exception as e:
-        await callback_query.answer(f"❌ Xato: {str(e)}", show_alert=True)
+        if active:
+            await callback_query.answer("⚠️ Siz allaqachon test boshlagan edingiz!", show_alert=True)
+            return
+
+        try:
+            participation = TestService.create_participation(user.id, user.direction_id)
+            questions = TestService.get_test_questions(user.direction_id)
+
+            if not questions:
+                await callback_query.answer("❌ Savollar topilmadi!", show_alert=True)
+                return
+
+            await state.update_data(
+                participation_id=participation.id,
+                test_session_id=participation.test_session_id,
+                questions=[(q.id, q.text_uz, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_answer) for q in questions],
+                current_question_index=0,
+                answers={}
+            )
+
+            await callback_query.message.delete()
+            question = questions[0]
+            question_text = (
+                f"<b>Savol #1/{len(questions)}</b>\n\n"
+                f"{question.text_uz}\n\n"
+                f"A) {question.option_a}\n"
+                f"B) {question.option_b}\n"
+                f"C) {question.option_c}\n"
+                f"D) {question.option_d}"
+            )
+            from bot.keyboards import get_test_answer_keyboard
+            await callback_query.message.answer(
+                question_text, reply_markup=get_test_answer_keyboard(), parse_mode="HTML"
+            )
+            await state.set_state(TestSessionStates.test_active)
+        except Exception as e:
+            await callback_query.answer(f"❌ Xato: {str(e)}", show_alert=True)
 
 
 @router.callback_query(TestSessionStates.test_confirmation, F.data == "test_cancel")
@@ -464,84 +496,144 @@ async def cancel_test(callback_query: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(TestSessionStates.test_active, F.data.startswith("answer_"))
 async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMContext):
-    answer = callback_query.data.split("_")[1]
-    data = await state.get_data()
-    current_index = data.get('current_question_index', 0)
-    questions = data.get('questions', [])
-    answers = data.get('answers', {})
-    participation_id = data.get('participation_id')
-    test_session_id = data.get('test_session_id')
+    uid = callback_query.from_user.id
 
-    if answer != "skip":
-        question_id = questions[current_index][0]
-        answers[str(current_index)] = answer
-        user = get_user_by_telegram_id(callback_query.from_user.id)
-        if user:
-            TestService.save_answer(
-                participation_id=participation_id,
-                user_id=user.id,  # ← users.id (DB)
-                test_session_id=test_session_id,
-                question_id=question_id,
-                selected_answer=answer
+    # 300ms throttle — spam tugma bosishni to'sadi
+    if not throttle_check(uid, min_interval=0.3):
+        await callback_query.answer()
+        return
+
+    # Bir vaqtda ikki parallel javob yozilmasin
+    if is_processing(uid):
+        await callback_query.answer("⏳")
+        return
+
+    async with user_lock(uid):
+        answer = callback_query.data.split("_")[1]
+        data = await state.get_data()
+        current_index = data.get('current_question_index', 0)
+        questions = data.get('questions', [])
+        answers = data.get('answers', {})
+        participation_id = data.get('participation_id')
+        test_session_id = data.get('test_session_id')
+
+        # State yo'q — internet uzilgandan keyingi eski tugma
+        if not questions or participation_id is None:
+            await callback_query.answer(
+                "❌ Test ma'lumotlari topilmadi. /start bosing.", show_alert=True
             )
+            await state.clear()
+            return
 
-    else:
-        answers[str(current_index)] = None
+        if current_index >= len(questions):
+            await callback_query.answer()
+            return
 
-    current_index += 1
-
-    if current_index >= len(questions):
-        score_info = TestService.complete_test(participation_id)
-        await callback_query.message.delete()
-        if score_info:
-            pct = (score_info['correct_count'] / score_info['total_questions'] * 100) if score_info['total_questions'] > 0 else 0
-            result_text = (
-                f"✅ <b>Imtihon tugallandi!</b>\n\n"
-                f"📊 <b>Natijalaringiz:</b>\n"
-                f"• 📈 Ball: {score_info['score']}\n"
-                f"• ✅ To'g'ri: {score_info['correct_count']}/{score_info['total_questions']}\n"
-                f"• 📊 Foiz: {pct:.1f}%\n\n"
-                f"🏆 Reytingda o'zingizning o'riningizni tekshiring!"
-            )
+        if answer != "skip":
+            question_id = questions[current_index][0]
+            answers[str(current_index)] = answer
+            user = get_user_by_telegram_id(uid)
+            if user:
+                TestService.save_answer(
+                    participation_id=participation_id,
+                    user_id=user.id,
+                    test_session_id=test_session_id,
+                    question_id=question_id,
+                    selected_answer=answer
+                )
         else:
-            result_text = "✅ Imtihon tugallandi! Natijalarni ko'rish uchun \"Natijalarim\" tugmasini bosing."
-        from bot.keyboards import get_test_results_keyboard
-        await callback_query.message.answer(result_text, reply_markup=get_test_results_keyboard(), parse_mode="HTML")
-        await state.set_state(UserMainMenuStates.main_menu)
-    else:
-        question = questions[current_index]
-        question_text = (
-            f"<b>Savol #{current_index + 1}/{len(questions)}</b>\n\n"
-            f"{question[1]}\n\n"
-            f"A) {question[2]}\nB) {question[3]}\nC) {question[4]}\nD) {question[5]}"
-        )
-        await state.update_data(current_question_index=current_index, answers=answers)
-        from bot.keyboards import get_test_answer_keyboard
-        await callback_query.message.edit_text(question_text, reply_markup=get_test_answer_keyboard(), parse_mode="HTML")
+            answers[str(current_index)] = None
 
-    await callback_query.answer()
+        current_index += 1
+
+        if current_index >= len(questions):
+            score_info = TestService.complete_test(participation_id)
+            try:
+                await callback_query.message.delete()
+            except Exception:
+                pass
+            if score_info:
+                pct = (
+                    score_info['correct_count'] / score_info['total_questions'] * 100
+                    if score_info['total_questions'] > 0 else 0
+                )
+                result_text = (
+                    f"✅ <b>Imtihon tugallandi!</b>\n\n"
+                    f"📊 <b>Natijalaringiz:</b>\n"
+                    f"• 📈 Ball: {score_info['score']}\n"
+                    f"• ✅ To'g'ri: {score_info['correct_count']}/{score_info['total_questions']}\n"
+                    f"• 📊 Foiz: {pct:.1f}%\n\n"
+                    f"🏆 Reytingda o'zingizning o'riningizni tekshiring!"
+                )
+            else:
+                result_text = "✅ Imtihon tugallandi!"
+            from bot.keyboards import get_test_results_keyboard
+            await callback_query.message.answer(
+                result_text, reply_markup=get_test_results_keyboard(), parse_mode="HTML"
+            )
+            await state.set_state(UserMainMenuStates.main_menu)
+        else:
+            question = questions[current_index]
+            question_text = (
+                f"<b>Savol #{current_index + 1}/{len(questions)}</b>\n\n"
+                f"{question[1]}\n\n"
+                f"A) {question[2]}\nB) {question[3]}\nC) {question[4]}\nD) {question[5]}"
+            )
+            await state.update_data(current_question_index=current_index, answers=answers)
+            from bot.keyboards import get_test_answer_keyboard
+            try:
+                await callback_query.message.edit_text(
+                    question_text, reply_markup=get_test_answer_keyboard(), parse_mode="HTML"
+                )
+            except Exception:
+                pass  # Xabar o'zgarmaganda Telegram xato beradi — e'tibor bermaslik
+
+        await callback_query.answer()
 
 
 @router.callback_query(TestSessionStates.test_active, F.data == "test_finish")
 async def finish_test_early(callback_query: types.CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    participation_id = data.get('participation_id')
-    score_info = TestService.complete_test(participation_id)
-    await callback_query.message.delete()
-    if score_info:
-        pct = (score_info['correct_count'] / score_info['total_questions'] * 100) if score_info['total_questions'] > 0 else 0
-        result_text = (
-            f"✅ <b>Imtihon tugallandi!</b>\n\n"
-            f"• 📈 Ball: {score_info['score']}\n"
-            f"• ✅ To'g'ri: {score_info['correct_count']}/{score_info['total_questions']}\n"
-            f"• 📊 Foiz: {pct:.1f}%"
+    uid = callback_query.from_user.id
+
+    if is_processing(uid):
+        await callback_query.answer("⏳ Yakunlanmoqda...")
+        return
+
+    async with user_lock(uid):
+        data = await state.get_data()
+        participation_id = data.get('participation_id')
+
+        if not participation_id:
+            await callback_query.answer("❌ Test ma'lumotlari yo'q.", show_alert=True)
+            await state.clear()
+            return
+
+        score_info = TestService.complete_test(participation_id)
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
+
+        if score_info:
+            pct = (
+                score_info['correct_count'] / score_info['total_questions'] * 100
+                if score_info['total_questions'] > 0 else 0
+            )
+            result_text = (
+                f"✅ <b>Imtihon tugallandi!</b>\n\n"
+                f"• 📈 Ball: {score_info['score']}\n"
+                f"• ✅ To'g'ri: {score_info['correct_count']}/{score_info['total_questions']}\n"
+                f"• 📊 Foiz: {pct:.1f}%"
+            )
+        else:
+            result_text = "✅ Imtihon tugallandi!"
+
+        from bot.keyboards import get_test_results_keyboard
+        await callback_query.message.answer(
+            result_text, reply_markup=get_test_results_keyboard(), parse_mode="HTML"
         )
-    else:
-        result_text = "✅ Imtihon tugallandi!"
-    from bot.keyboards import get_test_results_keyboard
-    await callback_query.message.answer(result_text, reply_markup=get_test_results_keyboard(), parse_mode="HTML")
-    await state.set_state(UserMainMenuStates.main_menu)
-    await callback_query.answer()
+        await state.set_state(UserMainMenuStates.main_menu)
+        await callback_query.answer()
 
 
 # ─── Test natijasi menyusidan ─────────────────────────────────────────────────
