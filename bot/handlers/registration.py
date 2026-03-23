@@ -867,6 +867,84 @@ async def profile_direction_selected(callback_query: types.CallbackQuery, state:
     )
 
 
+# ─── Inline qidiruv natijasi tanlandi ────────────────────────────────────────
+
+@router.message(F.text == "direction_search_failed")
+async def handle_search_failed(message: types.Message, state: FSMContext):
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+
+@router.message(F.text.startswith("direction_chosen:"))
+async def handle_any_direction_chosen(message: types.Message, state: FSMContext):
+    """
+    Inline yo'nalish tanlash — state filtrisiz.
+    Har qanday holatda kelsa ham ushlanadi.
+    """
+    direction_id = message.text.split(":", 1)[1].strip()
+
+    # Avval xabarni o'chirib yuboramiz — ugly text ko'rinmasin
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    db = Session()
+    direction = db.query(Direction).filter(Direction.id == direction_id).first()
+    if not direction:
+        await message.answer("❌ Yo'nalish topilmadi!")
+        db.close()
+        return
+
+    direction_name = direction.name_uz
+    user_db = db.query(User).filter(User.telegram_id == message.from_user.id).first()
+    if user_db:
+        user_db.direction_id = direction_id
+        db.commit()
+    db.close()
+
+    current_state = await state.get_state()
+
+    if current_state in (
+        TestSessionStates.waiting_for_direction,
+        TestSessionStates.searching_direction,
+    ):
+        user = get_user_by_telegram_id(message.from_user.id)
+        await message.answer(f"✅ Yo'nalish tanlandi: <b>{direction_name}</b>", parse_mode="HTML")
+        await _show_test_confirmation(message, state, user)
+
+    elif current_state in (
+        ProfileEditStates.edit_direction,
+        ProfileEditStates.searching_direction,
+    ):
+        await state.set_state(UserMainMenuStates.main_menu)
+        await message.answer(f"✅ Yo'nalish saqlandi: <b>{direction_name}</b>", parse_mode="HTML")
+        user_fresh = get_user_by_telegram_id(message.from_user.id)
+        dn = user_fresh.direction.name_uz if user_fresh.direction else "—"
+        fn = f"{user_fresh.first_name} {user_fresh.last_name}".strip()
+        db2 = Session()
+        scores = db2.query(Score).filter(Score.user_id == user_fresh.id).all()
+        best = max((s.score for s in scores), default=0)
+        db2.close()
+        text = (
+            f"👤 <b>Profil</b>\n\n"
+            f"• 📝 F.I.SH: {fn}\n"
+            f"• 📱 Telefon: {user_fresh.phone}\n"
+            f"• 📍 Viloyat: {user_fresh.region.name_uz}\n"
+            f"• 📍 Tuman: {user_fresh.district.name_uz}\n"
+            f"• 📚 Yo'nalish: {dn}\n\n"
+            f"• 🧪 Imtihon soni: {len(scores)}\n"
+            f"• 📊 Eng yuqori ball: {best}\n\n"
+            f"<b>Tahrirlash:</b>"
+        )
+        await message.answer(text, reply_markup=get_profile_settings_keyboard(), parse_mode="HTML")
+    else:
+        # Noma'lum holat — asosiy menyuga qaytarish
+        await message.answer(f"✅ Yo'nalish saqlandi: <b>{direction_name}</b>", parse_mode="HTML")
+
+
 # ─── Test natijasi menyusidan ─────────────────────────────────────────────────
 
 @router.message(UserMainMenuStates.main_menu, F.text == "🧪 Yana test qol")
