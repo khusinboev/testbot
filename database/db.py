@@ -121,7 +121,7 @@ def seed_regions_and_districts():
         if db.query(Region).first():
             print("Viloyatlar allaqachon bor, o'tkazildi")
             return
-        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        base = os.path.dirname(os.path.abspath(__file__))
         for r in _load_json(os.path.join(base, 'regions.json')):
             db.add(Region(id=int(r['id']), name_uz=r['name_uz'],
                           name_oz=r['name_oz'], name_ru=r['name_ru']))
