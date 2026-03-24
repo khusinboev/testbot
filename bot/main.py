@@ -46,13 +46,11 @@ async def main():
     try:
         from bot.handlers.start        import router as start_router
         from bot.handlers.registration import router as registration_router
-        from bot.handlers.test         import router as test_router
         from bot.handlers.inline       import router as inline_router
 
         # Tartibi muhim: registration avval (u ko'proq handler tutadi)
         dp.include_router(registration_router)
         dp.include_router(start_router)
-        dp.include_router(test_router)
         dp.include_router(inline_router)
 
         # Scheduler ishga tushirish
