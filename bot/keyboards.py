@@ -1,3 +1,10 @@
+"""
+bot/keyboards.py
+
+YANGILANDI:
+  - get_main_menu_keyboard: referal yoqilgan bo'lsa "🔗 Referalim" tugmasi qo'shiladi
+  - get_main_menu_keyboard endi async, referral_settings ni tekshiradi
+"""
 from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton,
     InlineKeyboardMarkup, InlineKeyboardButton,
@@ -47,10 +54,10 @@ async def get_directions_keyboard(page: int = 0, per_page: int = 20) -> InlineKe
     directions = db.query(Direction).all()
     db.close()
 
-    start_idx = page * per_page
-    end_idx = start_idx + per_page
+    start_idx       = page * per_page
+    end_idx         = start_idx + per_page
     page_directions = directions[start_idx:end_idx]
-    total = len(directions)
+    total           = len(directions)
 
     keyboard = []
     for d in page_directions:
@@ -67,14 +74,12 @@ async def get_directions_keyboard(page: int = 0, per_page: int = 20) -> InlineKe
     if nav_buttons:
         keyboard.append(nav_buttons)
 
-    # Qidiruv (inline mode) va orqaga tugmalari
     keyboard.append([InlineKeyboardButton(text="🔍 Qidirish", switch_inline_query_current_chat="yo'nalish: ")])
     keyboard.append([InlineKeyboardButton(text="◀ Orqaga", callback_data="direction_list_back")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 async def get_direction_search_results(query: str) -> InlineKeyboardMarkup:
-    """Qidiruv natijalarini keyboard sifatida qaytaradi."""
     db = Session()
     directions = db.query(Direction).filter(
         Direction.name_uz.ilike(f"%{query}%")
@@ -106,14 +111,31 @@ async def get_phone_keyboard() -> ReplyKeyboardMarkup:
 
 
 async def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🧪 Testni boshlash")],
-            [KeyboardButton(text="📊 Natijalarim"), KeyboardButton(text="🏆 Reyting")],
-            [KeyboardButton(text="👤 Profilim"), KeyboardButton(text="❓ Yordam")]
-        ],
-        resize_keyboard=True
-    )
+    """
+    Asosiy menyu tugmalari.
+    Referal tizimi yoqilgan bo'lsa — "🔗 Referalim" tugmasi ham ko'rinadi.
+    """
+    # Referal yoqilganligini tekshiramiz
+    referral_enabled = False
+    try:
+        from utils.referral_service import get_referral_settings
+        settings = get_referral_settings()
+        referral_enabled = settings.is_enabled
+    except Exception:
+        pass
+
+    rows = [
+        [KeyboardButton(text="🧪 Testni boshlash")],
+        [KeyboardButton(text="📊 Natijalarim"), KeyboardButton(text="🏆 Reyting")],
+    ]
+
+    if referral_enabled:
+        rows.append([KeyboardButton(text="🔗 Referalim"), KeyboardButton(text="👤 Profilim")])
+        rows.append([KeyboardButton(text="❓ Yordam")])
+    else:
+        rows.append([KeyboardButton(text="👤 Profilim"), KeyboardButton(text="❓ Yordam")])
+
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
 
 def get_test_answer_keyboard() -> InlineKeyboardMarkup:

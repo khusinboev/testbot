@@ -22,6 +22,12 @@ TUZATILDI (to'liq qayta yozildi):
        - Takroriy chaqiruvdan himoya
        - Snapshot tozalanadi
        - Arxivlash oldin, keyin yangi Score
+
+  5. get_user_scores() TUZATILDI:
+       - INNER JOIN → OUTER JOIN (participation_id=NULL bo'lgan eski scorlar ham ko'rinadi)
+       - s.participation lazy load → session yopilgandan keyin xato bermaslik uchun
+         participation lar alohida batch so'rovda olinadi
+       - debug `print(s.direction_id)` olib tashlandi
 """
 from __future__ import annotations
 
@@ -384,7 +390,7 @@ class TestService:
                     return {
                         'score':           score_obj.score,
                         'correct_count':   score_obj.correct_count,
-                        'attempted_count': score_obj.attempted_count,
+                        'attempted_count': score_obj.attempted_count or 0,
                         'total_questions': TOTAL_TEST_QUESTIONS,
                         'percentage':      pct,
                     }
@@ -681,7 +687,7 @@ class TestService:
             db.close()
 
     # ─────────────────────────────────────────────────────────────
-    # Shaxsiy natijalar (arxivlangan ham ko'rinadi)
+    # Shaxsiy natijalar — TUZATILDI
     # ─────────────────────────────────────────────────────────────
     @staticmethod
     def get_user_scores(
@@ -691,15 +697,27 @@ class TestService:
     ) -> List[Dict[str, Any]]:
         """
         Foydalanuvchining natijalarini qaytaradi.
-        include_archived=True: arxivlangan natijalar ham ko'rinadi (shaxsiy natijalar uchun)
+
+        TUZATILDI:
+          - INNER JOIN → OUTER JOIN: participation_id=NULL bo'lgan
+            eski scorlar ham ko'rinadi, yo'qolmaydi.
+          - s.participation lazy load olib tashlandi: session yopilgandan
+            keyin attribute xatosi bermaslik uchun participation lar
+            alohida IN so'rovda olinadi.
+          - debug print(s.direction_id) olib tashlandi.
+          - attempted_count uchun `or 0` qo'shildi (NULL bo'lishi mumkin).
+
+        include_archived=True: arxivlangan natijalar ham ko'rinadi (shaxsiy sahifa)
         include_archived=False: faqat hozirgi (reyting uchun)
         """
         db = Session()
         try:
             query = (
                 db.query(Score)
-                .join(UserTestParticipation,
-                      Score.participation_id == UserTestParticipation.id)
+                .outerjoin(
+                    UserTestParticipation,
+                    Score.participation_id == UserTestParticipation.id
+                )
                 .filter(Score.user_id == user_id)
             )
             if not include_archived:
@@ -712,19 +730,29 @@ class TestService:
                 .all()
             )
 
+            # participation larni session ichida batch olamiz
+            # (session yopilgandan keyin lazy load qilish xato beradi)
+            p_ids = [s.participation_id for s in scores if s.participation_id is not None]
+            participations: Dict[int, UserTestParticipation] = {}
+            if p_ids:
+                for p in db.query(UserTestParticipation).filter(
+                    UserTestParticipation.id.in_(p_ids)
+                ).all():
+                    participations[p.id] = p
+
             result = []
             for s in scores:
                 pct = round(s.correct_count / TOTAL_TEST_QUESTIONS * 100, 1)
-                participation = s.participation
+                p = participations.get(s.participation_id) if s.participation_id else None
                 result.append({
                     'score':           s.score,
                     'correct_count':   s.correct_count,
-                    'attempted_count': s.attempted_count,
+                    'attempted_count': s.attempted_count or 0,
                     'total_questions': TOTAL_TEST_QUESTIONS,
                     'percentage':      pct,
                     'is_archived':     s.is_archived,
                     'created_at':      s.created_at,
-                    'direction_id':    participation.direction_id if participation else None,
+                    'direction_id':    p.direction_id if p else None,
                 })
             return result
         finally:

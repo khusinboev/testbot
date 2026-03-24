@@ -1,11 +1,12 @@
 """
-bot/handlers/registration.py  — score display tuzatildi
+bot/handlers/registration.py
 
-O'zgarishlar:
-  - _format_score_result(): yangi helper, hamma natija xabarlarini bir joyda
-  - attempted_count / total (90) ko'rsatiladi
-  - Foiz = correct / 90 * 100
-  - Arxivlangan natijalar shaxsiy natijalar bo'limida belgilanadi
+YANGILANDI:
+  - /start da referal kod qabul qilish: /start ref_XXXXXXXX
+  - Ro'yxatdan o'tgandan keyin referal qayd qilish
+  - Referal gate: kerakli referal soni to'ldirilmagan bo'lsa blok
+  - show_main_menu da referal gate tekshiruvi
+  - show_referral_status: userga o'z referal holatini ko'rsatish
 """
 from __future__ import annotations
 
@@ -33,13 +34,31 @@ from utils.locks import user_lock, is_processing, throttle_check
 from utils.channel_service import (
     subscription_gate, check_user_subscriptions, build_subscribe_keyboard
 )
+from utils.referral_service import (
+    check_referral_gate, get_or_create_referral_link,
+    record_referral_invite, get_referral_settings
+)
 from sqlalchemy.orm import joinedload
 from datetime import datetime
 import logging
+import os
 import traceback
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+# Bot username (muhit o'zgaruvchisidan yoki avtomatik)
+_BOT_USERNAME = None
+
+async def _get_bot_username(bot: Bot) -> str:
+    global _BOT_USERNAME
+    if not _BOT_USERNAME:
+        try:
+            me = await bot.get_me()
+            _BOT_USERNAME = me.username
+        except Exception:
+            _BOT_USERNAME = "dtm_bot"
+    return _BOT_USERNAME
 
 
 def _err(e: Exception) -> str:
@@ -48,18 +67,12 @@ def _err(e: Exception) -> str:
 
 
 def _format_score_result(score_info: dict, prefix: str = "✅ <b>Imtihon tugallandi!</b>") -> str:
-    """
-    Natija xabarini formatlaydi.
-    score_info: complete_test() dan kelgan dict
-    - correct_count / 90 * 100 = foiz
-    - attempted_count = javob berilgan savollar soni
-    """
-    score        = score_info.get('score', 0)
-    correct      = score_info.get('correct_count', 0)
-    attempted    = score_info.get('attempted_count', 0)
-    total        = TOTAL_TEST_QUESTIONS  # Har doim 90
-    pct          = round(correct / total * 100, 1)
-    unanswered   = total - attempted
+    score      = score_info.get('score', 0)
+    correct    = score_info.get('correct_count', 0)
+    attempted  = score_info.get('attempted_count', 0)
+    total      = TOTAL_TEST_QUESTIONS
+    pct        = round(correct / total * 100, 1)
+    unanswered = total - attempted
 
     lines = [
         prefix, "",
@@ -109,6 +122,95 @@ def _get_direction_subject_names(direction: Direction):
         db.close()
 
 
+# ─── Referal gate tekshiruvi ─────────────────────────────────────────────────
+
+async def referral_gate(bot: Bot, user_id: int, message: types.Message) -> bool:
+    """
+    True = o'tish mumkin.
+    False = referal talab bajarilmagan, xabar yuborildi.
+    """
+    result = check_referral_gate(user_id)
+    if result['allowed']:
+        return True
+
+    bot_username = await _get_bot_username(bot)
+    link_url = f"https://t.me/{bot_username}?start={result['link_code']}"
+
+    invited   = result['invited']
+    required  = result['required']
+    remaining = result['remaining']
+
+    # Progress bar
+    filled  = min(invited, required)
+    bar     = "🟢" * filled + "⚪️" * (required - filled)
+
+    ref_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="📤 Havolani ulashish",
+            switch_inline_query=f"Men sizni DTM Test Bot ga taklif qilmoqchiman! {link_url}"
+        )],
+        [InlineKeyboardButton(text="🔄 Yangilash", callback_data="check_referral")],
+    ])
+
+    await message.answer(
+        f"🔗 <b>Referal talab</b>\n\n"
+        f"Botdan foydalanish uchun <b>{required}</b> ta do'stingizni taklif qiling.\n\n"
+        f"📊 Holat: <b>{invited}/{required}</b>\n"
+        f"{bar}\n\n"
+        f"🔗 Sizning havolangiz:\n"
+        f"<code>{link_url}</code>\n\n"
+        f"Ushbu havolani do'stlaringizga yuboring. Ular botga birinchi marta kirganida "
+        f"sizning hisobingizga qo'shiladi.\n\n"
+        f"⏳ <i>Qoldi: {remaining} ta</i>",
+        reply_markup=ref_kb, parse_mode="HTML"
+    )
+    return False
+
+
+@router.callback_query(F.data == "check_referral")
+async def handle_check_referral(callback_query: types.CallbackQuery,
+                                  state: FSMContext, bot: Bot):
+    uid    = callback_query.from_user.id
+    result = check_referral_gate(uid)
+
+    if result['allowed']:
+        await callback_query.answer("✅ Tabriklaymiz! Talab bajarildi!", show_alert=True)
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
+        user = get_user_by_telegram_id(uid)
+        if user:
+            await show_main_menu(callback_query.message, state, user)
+        else:
+            await callback_query.message.answer("Boshlash uchun /start bosing.")
+        return
+
+    invited   = result['invited']
+    required  = result['required']
+    remaining = result['remaining']
+    filled    = min(invited, required)
+    bar       = "🟢" * filled + "⚪️" * (required - filled)
+
+    await callback_query.answer(
+        f"❌ Hali {remaining} ta referal kerak!", show_alert=True
+    )
+    try:
+        bot_username = await _get_bot_username(bot)
+        link_url = f"https://t.me/{bot_username}?start={result['link_code']}"
+        await callback_query.message.edit_text(
+            f"🔗 <b>Referal talab</b>\n\n"
+            f"📊 Holat: <b>{invited}/{required}</b>\n"
+            f"{bar}\n\n"
+            f"🔗 Havolangiz:\n<code>{link_url}</code>\n\n"
+            f"⏳ <i>Qoldi: {remaining} ta</i>",
+            reply_markup=callback_query.message.reply_markup,
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
+
+
 async def show_main_menu(message: types.Message, state: FSMContext, user: User):
     keyboard       = await get_main_menu_keyboard()
     direction_name = user.direction.name_uz if user.direction else "❗ Belgilanmagan"
@@ -140,6 +242,9 @@ async def handle_check_subscription(
             pass
         user = get_user_by_telegram_id(uid)
         if user:
+            # Referal gate ham tekshiriladi
+            if not await referral_gate(bot, uid, callback_query.message):
+                return
             await show_main_menu(callback_query.message, state, user)
         else:
             await callback_query.message.answer("Ro'yxatdan o'tish uchun /start bosing.")
@@ -157,10 +262,24 @@ async def handle_check_subscription(
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext, bot: Bot):
     await state.clear()
+
+    # Referal kodni /start argumentidan olish
+    args = message.text.split(maxsplit=1)
+    ref_code = args[1].strip() if len(args) > 1 else None
+
+    # FSM ga vaqtincha saqlash (ro'yxatdan o'tgandan keyin ishlatiladi)
+    if ref_code and ref_code.startswith('ref_'):
+        await state.update_data(pending_ref_code=ref_code)
+
+    # Majburiy kanal tekshiruvi
     if not await subscription_gate(bot, message.from_user.id, message):
         return
+
     user = get_user_by_telegram_id(message.from_user.id)
     if user:
+        # Referal gate tekshiruvi (mavjud user uchun)
+        if not await referral_gate(bot, message.from_user.id, message):
+            return
         await show_main_menu(message, state, user)
     else:
         await message.answer(
@@ -265,7 +384,8 @@ async def process_district_selection(callback_query: types.CallbackQuery, state:
 
 
 @router.callback_query(UserRegistrationStates.confirmation)
-async def process_confirmation(callback_query: types.CallbackQuery, state: FSMContext):
+async def process_confirmation(callback_query: types.CallbackQuery,
+                                state: FSMContext, bot: Bot):
     if is_processing(callback_query.from_user.id):
         await callback_query.answer("⏳ Kuting...")
         return
@@ -298,11 +418,27 @@ async def process_confirmation(callback_query: types.CallbackQuery, state: FSMCo
             )
             db.add(new_user)
             db.commit()
+            new_user_id = new_user.id
+
             user = db.query(User).options(
                 joinedload(User.region), joinedload(User.district), joinedload(User.direction)
             ).filter(User.telegram_id == callback_query.from_user.id).first()
+
+            # ── Referal qayd qilish ──────────────────────────────────────────
+            pending_ref = data.get('pending_ref_code')
+            if pending_ref:
+                success = record_referral_invite(pending_ref, new_user_id)
+                if success:
+                    logger.info("Referal qayd qilindi: code=%s → user_id=%d",
+                                pending_ref, new_user_id)
+
             await callback_query.answer("✅ Ro'yxatdan o'tildi!", show_alert=True)
             await state.clear()
+
+            # ── Referal gate tekshiruvi (yangi user uchun) ───────────────────
+            if not await referral_gate(bot, callback_query.from_user.id, callback_query.message):
+                return
+
             await show_main_menu(callback_query.message, state, user)
         except Exception as e:
             db.rollback()
@@ -357,7 +493,6 @@ async def handle_leaderboard_period(callback_query: types.CallbackQuery, state: 
         return
 
     leaderboard = TestService.get_direction_leaderboard(user.direction_id, period, limit=10)
-
     period_names = {"daily": "Kunlik", "weekly": "Haftalik", "all_time": "Barcha vaqt"}
 
     if not leaderboard:
@@ -393,6 +528,8 @@ async def handle_leaderboard_period(callback_query: types.CallbackQuery, state: 
 @router.message(UserMainMenuStates.main_menu, F.text == "🧪 Testni boshlash")
 async def start_test_button(message: types.Message, state: FSMContext, bot: Bot):
     if not await subscription_gate(bot, message.from_user.id, message):
+        return
+    if not await referral_gate(bot, message.from_user.id, message):
         return
 
     user = get_user_by_telegram_id(message.from_user.id)
@@ -687,7 +824,6 @@ async def confirm_test_start(callback_query: types.CallbackQuery,
             )
             return
 
-        # Vaqti o'tgan 'active' participationlarni tozalash
         db2 = Session()
         stale = [p.id for p in db2.query(UserTestParticipation).filter(
             UserTestParticipation.user_id == user.id,
@@ -807,7 +943,6 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
             await callback_query.answer()
             return
 
-        # Deadline tekshiruvi — FSM state dan (DB ga bormaydi)
         if deadline_ts and datetime.utcnow().timestamp() > deadline_ts:
             score_info = TestService.complete_test(participation_id)
             try:
@@ -920,7 +1055,6 @@ async def show_my_results(message: types.Message, state: FSMContext):
         await message.answer("❌ Ro'yxatdan o'tmagan edingiz!")
         return
 
-    # include_archived=True — shaxsiy natijalar, hammasi ko'rinadi
     scores = TestService.get_user_scores(user.id, include_archived=True, limit=10)
 
     if not scores:
@@ -938,13 +1072,55 @@ async def show_my_results(message: types.Message, state: FSMContext):
     await message.answer(text, parse_mode="HTML")
 
 
-# ─── Reyting (main menu tugmasi) ─────────────────────────────────────────────
+# ─── Referal (user tomonidan) ─────────────────────────────────────────────────
 
-@router.message(UserMainMenuStates.main_menu, F.text == "🏆 Reyting")
-async def show_leaderboard_menu(message: types.Message, state: FSMContext):
-    # Bu handler yuqoridagi show_leaderboard bilan bir xil — ikkinchisi ustun turadi
-    pass
+@router.message(UserMainMenuStates.main_menu, F.text == "🔗 Referalim")
+async def show_my_referral(message: types.Message, state: FSMContext, bot: Bot):
+    user = get_user_by_telegram_id(message.from_user.id)
+    if not user:
+        await message.answer("❌ Ro'yxatdan o'ting!")
+        return
 
+    settings = get_referral_settings()
+    if not settings.is_enabled:
+        await message.answer(
+            "🔗 <b>Referal tizimi</b>\n\n<i>Hozircha referal tizimi faol emas.</i>",
+            parse_mode="HTML"
+        )
+        return
+
+    link = get_or_create_referral_link(user.id)
+    bot_username = await _get_bot_username(bot)
+    link_url = f"https://t.me/{bot_username}?start={link.code}"
+    invited  = link.invited_count or 0
+
+    required = settings.required_count
+    if required > 0:
+        filled    = min(invited, required)
+        bar       = "🟢" * filled + "⚪️" * (required - filled)
+        progress  = f"\n\n📊 Talab: {invited}/{required}\n{bar}"
+        if invited >= required:
+            progress += "\n✅ Talab bajarilgan!"
+    else:
+        progress = f"\n\n👥 Jami taklif qilganlar: <b>{invited}</b> ta"
+
+    ref_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="📤 Do'stlarga ulashish",
+            switch_inline_query=f"DTM Test Bot ga kiring! 🎓 {link_url}"
+        )],
+    ])
+
+    await message.answer(
+        f"🔗 <b>Mening referal havolam</b>\n\n"
+        f"<code>{link_url}</code>\n"
+        f"{progress}\n\n"
+        f"Do'stlaringiz ushbu havola orqali kirganda hisobingizga qo'shiladi!",
+        reply_markup=ref_kb, parse_mode="HTML"
+    )
+
+
+# ─── Boshqa handlerlar ────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "leaderboard_global")
 async def show_global_leaderboard_cb(callback_query: types.CallbackQuery, state: FSMContext):
@@ -978,8 +1154,6 @@ async def show_global_leaderboard_cb(callback_query: types.CallbackQuery, state:
     await callback_query.answer()
 
 
-# ─── Yordam ───────────────────────────────────────────────────────────────────
-
 @router.message(UserMainMenuStates.main_menu, F.text == "❓ Yordam")
 async def show_help(message: types.Message, state: FSMContext):
     await message.answer(
@@ -995,8 +1169,6 @@ async def show_help(message: types.Message, state: FSMContext):
     )
 
 
-# ─── Profil ───────────────────────────────────────────────────────────────────
-
 @router.message(UserMainMenuStates.main_menu, F.text == "👤 Profilim")
 async def show_profile(message: types.Message, state: FSMContext):
     user = get_user_by_telegram_id(message.from_user.id)
@@ -1004,11 +1176,10 @@ async def show_profile(message: types.Message, state: FSMContext):
         await message.answer("❌ Ro'yxatdan o'tmagan edingiz!")
         return
 
-    # Faqat non-archived scorlar — hozirgi holat uchun
     active_scores = TestService.get_user_scores(user.id, include_archived=False, limit=100)
     all_scores    = TestService.get_user_scores(user.id, include_archived=True, limit=100)
 
-    best_score = max((s['score'] for s in active_scores), default=0)
+    best_score  = max((s['score'] for s in active_scores), default=0)
     total_tests = len(all_scores)
 
     if user.direction:
@@ -1043,8 +1214,6 @@ async def profile_back(callback_query: types.CallbackQuery, state: FSMContext):
     await state.set_state(UserMainMenuStates.main_menu)
 
 
-# ─── F.I.SH tahrirlash ────────────────────────────────────────────────────────
-
 @router.callback_query(F.data == "profile_edit_name")
 async def profile_edit_name_start(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.message.edit_text(
@@ -1075,8 +1244,6 @@ async def profile_edit_name_save(message: types.Message, state: FSMContext):
     finally:
         db.close()
 
-
-# ─── Yo'nalish tahrirlash (profil) ───────────────────────────────────────────
 
 @router.callback_query(F.data == "profile_edit_direction")
 async def profile_edit_direction_start(callback_query: types.CallbackQuery, state: FSMContext):
@@ -1138,8 +1305,6 @@ async def profile_direction_selected(callback_query: types.CallbackQuery, state:
     await show_profile(callback_query.message, state)
 
 
-# ─── Inline qidiruv ───────────────────────────────────────────────────────────
-
 @router.message(F.text == "direction_search_failed")
 async def handle_search_failed(message: types.Message, state: FSMContext):
     try:
@@ -1187,8 +1352,6 @@ async def handle_any_direction_chosen(message: types.Message, state: FSMContext)
     else:
         await show_main_menu(message, state, user)
 
-
-# ─── Qidiruv ─────────────────────────────────────────────────────────────────
 
 @router.callback_query(TestSessionStates.waiting_for_direction, F.data == "direction_search")
 async def test_direction_search_start(callback_query: types.CallbackQuery, state: FSMContext):
@@ -1307,8 +1470,6 @@ async def profile_direction_search_selected(callback_query: types.CallbackQuery,
         pass
     await show_profile(callback_query.message, state)
 
-
-# ─── Test natijasi tugmalari ──────────────────────────────────────────────────
 
 @router.message(UserMainMenuStates.main_menu, F.text == "🧪 Yana test qol")
 async def another_test(message: types.Message, state: FSMContext, bot: Bot):

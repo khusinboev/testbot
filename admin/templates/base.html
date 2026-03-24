@@ -334,6 +334,7 @@
     <div class="sub">v2.0 · panel</div>
   </div>
 
+<!-- === ASOSIY nav-section ni shu bilan almashtiring === -->
   <nav class="nav-section mt-3">
     <div class="nav-label">Asosiy</div>
     <a href="{{ url_for('dashboard') }}"
@@ -352,6 +353,10 @@
        class="nav-item {% if request.endpoint == 'questions' %}active{% endif %}">
       <span class="icon">❓</span> Savollar
     </a>
+    <a href="{{ url_for('directions') }}"
+       class="nav-item {% if request.endpoint == 'directions' %}active{% endif %}">
+      <span class="icon">📚</span> Yo'nalishlar
+    </a>
     <a href="{{ url_for('leaderboard') }}"
        class="nav-item {% if request.endpoint == 'leaderboard' %}active{% endif %}">
       <span class="icon">🏆</span> Reyting
@@ -363,6 +368,10 @@
     <a href="{{ url_for('channels') }}"
        class="nav-item {% if request.endpoint == 'channels' %}active{% endif %}">
       <span class="icon">📢</span> Kanallar
+    </a>
+    <a href="{{ url_for('referral') }}"
+       class="nav-item {% if request.endpoint == 'referral' %}active{% endif %}">
+      <span class="icon">🔗</span> Referal
     </a>
     <a href="{{ url_for('broadcast') }}"
        class="nav-item {% if request.endpoint == 'broadcast' %}active{% endif %}">

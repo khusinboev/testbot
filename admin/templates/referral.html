@@ -1,0 +1,386 @@
+{% extends 'base.html' %}
+{% block title %}Referal tizimi — DTM Admin{% endblock %}
+{% block page_title %}🔗 Referal tizimi{% endblock %}
+
+{% block head %}
+<style>
+  .toggle-switch {
+    position: relative; display: inline-block;
+    width: 52px; height: 28px;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; cursor: pointer; inset: 0;
+    background: var(--border); border-radius: 28px;
+    transition: .3s;
+  }
+  .toggle-slider:before {
+    content: ''; position: absolute;
+    height: 20px; width: 20px; left: 4px; bottom: 4px;
+    background: white; border-radius: 50%; transition: .3s;
+  }
+  input:checked + .toggle-slider { background: var(--success); }
+  input:checked + .toggle-slider:before { transform: translateX(24px); }
+
+  .settings-block {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 20px;
+  }
+  .settings-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap;
+  }
+  .settings-label { font-size: 14px; font-weight: 600; }
+  .settings-desc  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .req-count-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 0; border-top: 1px solid var(--border); margin-top: 12px;
+  }
+  .req-count-input {
+    width: 90px; padding: 8px 12px;
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: 8px; color: var(--text);
+    font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700;
+    text-align: center; transition: border-color .15s;
+  }
+  .req-count-input:focus { outline: none; border-color: var(--accent); }
+
+  .top-ref-card {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 10px;
+    margin-bottom: 8px; transition: border-color .15s;
+  }
+  .top-ref-card:hover { border-color: rgba(79,110,247,.4); }
+  .ref-rank {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; flex-shrink: 0;
+  }
+  .ref-rank.gold   { background: rgba(251,191,36,.2); color: #fbbf24; }
+  .ref-rank.silver { background: rgba(156,163,175,.2); color: #9ca3af; }
+  .ref-rank.bronze { background: rgba(180,83,9,.2); color: #b45309; }
+  .ref-rank.other  { background: rgba(79,110,247,.1); color: var(--accent); }
+  .ref-bar {
+    flex: 1; height: 6px; background: var(--border);
+    border-radius: 3px; overflow: hidden;
+  }
+  .ref-bar-fill {
+    height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+  }
+
+  .status-indicator {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;
+  }
+  .status-on  { background: rgba(34,197,94,.15); color: var(--success); }
+  .status-off { background: rgba(107,114,128,.15); color: var(--muted); }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .dot-on  { background: var(--success); animation: pulse 2s infinite; }
+  .dot-off { background: var(--muted); }
+
+  .ref-code-box {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; background: rgba(79,110,247,.08);
+    border: 1px solid rgba(79,110,247,.2);
+    padding: 3px 10px; border-radius: 6px; color: var(--accent);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Status banner -->
+<div class="flex items-center gap-3 mb-6">
+  <div class="status-indicator {% if settings.is_enabled %}status-on{% else %}status-off{% endif %}"
+       id="statusBadge">
+    <div class="status-dot {% if settings.is_enabled %}dot-on{% else %}dot-off{% endif %}"
+         id="statusDot"></div>
+    <span id="statusText">{{ 'Yoqilgan' if settings.is_enabled else "O'chirilgan" }}</span>
+  </div>
+  {% if settings.is_enabled and settings.required_count > 0 %}
+  <div class="text-muted text-sm">
+    · <b class="text-accent">{{ settings.required_count }}</b> ta referal talab qilinmoqda
+  </div>
+  {% elif settings.is_enabled %}
+  <div class="text-muted text-sm">· Referal talab yo'q (statistika uchun yoqilgan)</div>
+  {% endif %}
+</div>
+
+<div class="grid-2" style="gap:24px;align-items:start">
+
+  <!-- Sozlamalar -->
+  <div>
+    <div class="card mb-4">
+      <div class="card-header">
+        <span class="card-title">⚙️ Referal sozlamalari</span>
+      </div>
+      <div class="card-body">
+
+        <!-- Yoqish/o'chirish -->
+        <div class="settings-block">
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">Referal tizimi</div>
+              <div class="settings-desc">
+                Yoqilsa — har user o'z referal havola oladi va taklif statistikasi yig'iladi
+              </div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggleEnabled"
+                     {% if settings.is_enabled %}checked{% endif %}
+                     onchange="saveSetting('toggle')">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <!-- Talab soni -->
+          <div class="req-count-row">
+            <div style="flex:1">
+              <div class="settings-label" style="font-size:13px">Referal talabi</div>
+              <div class="settings-desc">
+                0 = talab yo'q (faqat statistika). N = N ta referal to'ldirilgunicha bot bloklanadi.
+              </div>
+            </div>
+            <input type="number" class="req-count-input" id="reqCount"
+                   value="{{ settings.required_count }}"
+                   min="0" max="100"
+                   onchange="saveSetting('count')">
+          </div>
+        </div>
+
+        <!-- Mukofot xabari -->
+        <div class="form-group">
+          <label class="form-label">Talab bajarilganda xabar (botda ko'rsatiladi)</label>
+          <textarea class="form-control" id="rewardMsg" rows="3"
+                    placeholder="🎉 Tabriklaymiz! Endi botdan to'liq foydalanishingiz mumkin!"
+                    >{{ settings.reward_message or '' }}</textarea>
+        </div>
+
+        <div id="saveResult" style="display:none;margin-bottom:12px"></div>
+
+        <button class="btn btn-primary w-full" onclick="saveAllSettings()">
+          💾 Saqlash
+        </button>
+      </div>
+    </div>
+
+    <!-- Qo'llanma -->
+    <div class="card" style="border-color:rgba(79,110,247,.25)">
+      <div class="card-body" style="font-size:13px">
+        <b style="color:var(--accent)">📖 Qanday ishlaydi?</b><br><br>
+        <b>1.</b> Tizim yoqilganda har user <code>ref_XXXXXXXX</code> kodi oladi<br><br>
+        <b>2.</b> User havola: <code>t.me/BOT?start=ref_XXXXXXXX</code><br><br>
+        <b>3.</b> Talab = <b>0</b> → Hamma kira oladi, faqat statistika yig'iladi<br><br>
+        <b>4.</b> Talab = <b>N</b> → N ta referal to'ldirilgunicha user bot menyu ko'ra olmaydi.
+        Unga havola beriladi va progress ko'rsatiladi<br><br>
+        <b>5.</b> Ro'yxatdan o'tish (majburiy kanal obunasi) + referal — ikki alohida tizim.
+        Ikkalasini birga ishlatish mumkin
+      </div>
+    </div>
+  </div>
+
+  <!-- Statistika -->
+  <div>
+    <!-- Umumiy -->
+    <div class="stats-grid mb-4" style="grid-template-columns:1fr 1fr">
+      <div class="stat-card blue">
+        <div class="stat-icon">🔗</div>
+        <div class="stat-value">{{ stats.total_links }}</div>
+        <div class="stat-label">Aktiv havolalar</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-icon">👤</div>
+        <div class="stat-value">{{ stats.total_invites }}</div>
+        <div class="stat-label">Jami takliflar</div>
+      </div>
+    </div>
+
+    <!-- Top referal -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🏆 Top referalchilar</span>
+        <span class="text-muted text-xs">Eng ko'p taklif qilganlar</span>
+      </div>
+      <div class="card-body">
+        {% if stats.top_referrers %}
+          {% set max_inv = stats.top_referrers[0].invited_count or 1 %}
+          {% for r in stats.top_referrers %}
+          <div class="top-ref-card">
+            <div class="ref-rank
+              {% if loop.index == 1 %}gold
+              {% elif loop.index == 2 %}silver
+              {% elif loop.index == 3 %}bronze
+              {% else %}other{% endif %}">
+              {{ loop.index }}
+            </div>
+            <div style="flex:1;min-width:0">
+              <div class="fw-700" style="font-size:13px">
+                {{ r.first_name }} {{ r.last_name }}
+              </div>
+              <div class="flex items-center gap-2 mt-1">
+                <div class="ref-code-box">{{ r.code }}</div>
+                <span class="text-muted text-xs font-mono">{{ r.phone }}</span>
+              </div>
+              <div class="ref-bar mt-2">
+                <div class="ref-bar-fill"
+                     style="width:{{ (r.invited_count / max_inv * 100) | int }}%"></div>
+              </div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div class="fw-700 text-accent" style="font-size:18px">{{ r.invited_count }}</div>
+              <div class="text-muted text-xs">taklif</div>
+            </div>
+            <button class="btn btn-ghost btn-sm"
+                    onclick="showUserReferral({{ r.user_id }}, '{{ r.first_name }}')">
+              📋
+            </button>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div style="text-align:center;padding:32px;color:var(--muted)">
+            Hali referal yo'q
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- User referal detail modali -->
+<div class="modal-overlay" id="refDetailModal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-title" id="refModalTitle">📋 Referal tafsilotlari</div>
+    <div id="refModalBody" style="max-height:380px;overflow-y:auto">
+      <div style="text-align:center;padding:30px;color:var(--muted)">⏳ Yuklanmoqda...</div>
+    </div>
+    <div class="flex gap-3 mt-4">
+      <button class="btn btn-ghost w-full"
+              onclick="document.getElementById('refDetailModal').classList.remove('open')">
+        Yopish
+      </button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function saveSetting(type) {
+  if (type === 'toggle') {
+    const enabled = document.getElementById('toggleEnabled').checked;
+    const res = await fetch('/api/referral/settings', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ is_enabled: enabled })
+    });
+    const d = await res.json();
+    if (d.success) updateStatusBadge(enabled);
+  } else if (type === 'count') {
+    const count = parseInt(document.getElementById('reqCount').value) || 0;
+    await fetch('/api/referral/settings', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ required_count: count })
+    });
+  }
+}
+
+async function saveAllSettings() {
+  const enabled = document.getElementById('toggleEnabled').checked;
+  const count   = parseInt(document.getElementById('reqCount').value) || 0;
+  const msg     = document.getElementById('rewardMsg').value.trim();
+  const result  = document.getElementById('saveResult');
+
+  const r = await fetch('/api/referral/settings', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ is_enabled: enabled, required_count: count, reward_message: msg })
+  });
+  const d = await r.json();
+
+  result.style.display = 'block';
+  if (d.success) {
+    result.innerHTML = '<div class="alert alert-success">✅ Saqlandi!</div>';
+    updateStatusBadge(enabled);
+    setTimeout(() => result.style.display = 'none', 2000);
+  } else {
+    result.innerHTML = `<div class="alert alert-error">❌ ${d.error}</div>`;
+  }
+}
+
+function updateStatusBadge(enabled) {
+  const badge = document.getElementById('statusBadge');
+  const dot   = document.getElementById('statusDot');
+  const text  = document.getElementById('statusText');
+  badge.className = `status-indicator ${enabled ? 'status-on' : 'status-off'}`;
+  dot.className   = `status-dot ${enabled ? 'dot-on' : 'dot-off'}`;
+  text.textContent = enabled ? 'Yoqilgan' : "O'chirilgan";
+}
+
+async function showUserReferral(userId, name) {
+  const modal = document.getElementById('refDetailModal');
+  const title = document.getElementById('refModalTitle');
+  const body  = document.getElementById('refModalBody');
+
+  title.textContent = `📋 ${name} — Referal tafsilotlari`;
+  body.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted)">⏳ Yuklanmoqda...</div>';
+  modal.classList.add('open');
+
+  const r = await fetch(`/api/referral/user/${userId}`);
+  const d = await r.json();
+
+  if (!d.success) {
+    body.innerHTML = '<div class="alert alert-error">❌ Xato</div>';
+    return;
+  }
+
+  const data = d.data;
+  if (!data.has_link) {
+    body.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted)">Referal link yo\'q</div>';
+    return;
+  }
+
+  const inviteRows = data.invites.length
+    ? data.invites.map((inv, i) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;
+                  border-bottom:1px solid rgba(42,45,58,.5)">
+        <span class="text-muted text-xs">${i+1}.</span>
+        <span class="fw-700 text-sm">${inv.first_name} ${inv.last_name}</span>
+        <span class="text-muted text-xs font-mono" style="margin-left:auto">${inv.created_at}</span>
+      </div>`).join('')
+    : '<div style="color:var(--muted);font-size:13px;padding:12px 0">Hali hech kim taklif qilinmagan</div>';
+
+  body.innerHTML = `
+    <div class="mb-4">
+      <div class="text-muted text-xs mb-1">Referal kodi</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="ref-code-box" style="font-size:14px">${data.code}</span>
+        <button class="btn btn-ghost btn-sm" onclick="copyCode('${data.code}')">📋 Nusxa</button>
+      </div>
+    </div>
+    <div class="mb-4">
+      <div class="text-muted text-xs mb-1">Taklif qilinganlar</div>
+      <div class="fw-700" style="font-size:22px;color:var(--accent)">${data.invited_count} ta</div>
+    </div>
+    <div>
+      <div class="text-muted text-xs mb-2">Taklif ro'yxati (so'nggi 20 ta)</div>
+      ${inviteRows}
+    </div>
+  `;
+}
+
+function copyCode(code) {
+  navigator.clipboard.writeText(code).then(() => {
+    alert('Nusxa olindi: ' + code);
+  });
+}
+
+document.getElementById('refDetailModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+});
+</script>
+{% endblock %}

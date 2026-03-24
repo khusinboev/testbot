@@ -93,6 +93,51 @@ def cmd_migrate():
          "ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'uz'"),
     ]
 
+    two_step = """
+    -- ═══════════════════════════════════════════════════════
+-- MIGRATION: Referal tizimi uchun yangi jadvallar
+-- scripts/manage.py migrate yoki to'g'ridan SQL ishlatish
+-- ═══════════════════════════════════════════════════════
+
+-- Referal sozlamalari (bitta qator)
+CREATE TABLE IF NOT EXISTS referral_settings (
+    id              SERIAL PRIMARY KEY,
+    is_enabled      BOOLEAN DEFAULT FALSE,
+    required_count  INTEGER DEFAULT 0,
+    reward_message  TEXT,
+    created_at      TIMESTAMP DEFAULT NOW(),
+    updated_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- Default sozlama
+INSERT INTO referral_settings (id, is_enabled, required_count, reward_message)
+VALUES (1, FALSE, 0, '🎉 Tabriklaymiz! Endi botdan to''liq foydalanishingiz mumkin!')
+ON CONFLICT (id) DO NOTHING;
+
+-- Referal linklar
+CREATE TABLE IF NOT EXISTS referral_links (
+    id            SERIAL PRIMARY KEY,
+    user_id       INTEGER UNIQUE NOT NULL REFERENCES users(id),
+    code          VARCHAR(20) UNIQUE NOT NULL,
+    invited_count INTEGER DEFAULT 0,
+    created_at    TIMESTAMP DEFAULT NOW()
+);
+
+-- Kim kimni taklif qilgani
+CREATE TABLE IF NOT EXISTS referral_invites (
+    id               SERIAL PRIMARY KEY,
+    referral_link_id INTEGER NOT NULL REFERENCES referral_links(id),
+    invited_user_id  INTEGER UNIQUE NOT NULL REFERENCES users(id),
+    created_at       TIMESTAMP DEFAULT NOW()
+);
+
+-- Indekslar (tezlashtirish uchun)
+CREATE INDEX IF NOT EXISTS idx_referral_links_user_id ON referral_links(user_id);
+CREATE INDEX IF NOT EXISTS idx_referral_links_code ON referral_links(code);
+CREATE INDEX IF NOT EXISTS idx_referral_invites_link_id ON referral_invites(referral_link_id);
+CREATE INDEX IF NOT EXISTS idx_referral_invites_invited_user ON referral_invites(invited_user_id);
+    """
+
     # MandatoryChannel va BroadcastMessage jadvallarini yaratish
     try:
         from database.models import Base
@@ -114,7 +159,8 @@ def cmd_migrate():
         except Exception as e:
             db.rollback()
             print(f"⚠️  {name}: {e}")
-
+    db.execute(two_step)
+    db.commit()
     db.close()
     print("\n🎉 Migration tugadi! Bot/admin ni qayta ishga tushiring.")
 

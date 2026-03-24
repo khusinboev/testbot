@@ -1,0 +1,258 @@
+{% extends 'base.html' %}
+{% block title %}Yo'nalishlar — DTM Admin{% endblock %}
+{% block page_title %}📚 Ta'lim yo'nalishlari{% endblock %}
+
+{% block head %}
+<style>
+  .dir-stat-bar {
+    height: 4px; border-radius: 2px;
+    background: rgba(79,110,247,.15);
+    margin-top: 6px; overflow: hidden;
+  }
+  .dir-stat-bar-fill {
+    height: 100%; border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transition: width .4s;
+  }
+  .sort-btn {
+    padding: 6px 14px; border-radius: 8px;
+    border: 1.5px solid var(--border);
+    background: var(--surface2); color: var(--muted);
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    text-decoration: none; transition: all .15s;
+  }
+  .sort-btn.active, .sort-btn:hover {
+    border-color: var(--accent); color: var(--accent);
+  }
+  /* Users modal */
+  .user-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px solid rgba(42,45,58,.5);
+  }
+  .user-row:last-child { border-bottom: none; }
+  .user-rank {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: rgba(79,110,247,.15); color: var(--accent);
+    font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .user-name { font-weight: 600; font-size: 13px; }
+  .user-phone { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+  .user-score { margin-left: auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Umumiy statistika -->
+<div class="stats-grid mb-4" style="grid-template-columns: repeat(auto-fit, minmax(180px,1fr))">
+  <div class="stat-card blue">
+    <div class="stat-icon">📚</div>
+    <div class="stat-value">{{ total }}</div>
+    <div class="stat-label">Jami yo'nalishlar</div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-icon">👥</div>
+    <div class="stat-value">{{ total_users_with_dir }}</div>
+    <div class="stat-label">Yo'nalish tanlagan</div>
+  </div>
+  <div class="stat-card orange">
+    <div class="stat-icon">❓</div>
+    <div class="stat-value">{{ total_users_without }}</div>
+    <div class="stat-label">Yo'nalish tanlamagan</div>
+  </div>
+</div>
+
+<!-- Filter va saralash -->
+<div class="card mb-4">
+  <div class="card-body" style="padding:16px">
+    <form method="GET" class="flex gap-3 items-center" style="flex-wrap:wrap">
+      <input type="text" name="search" class="form-control" style="max-width:280px"
+             placeholder="🔍 Yo'nalish nomi yoki kodi..." value="{{ search }}">
+      <button type="submit" class="btn btn-primary">Qidirish</button>
+      {% if search %}
+      <a href="{{ url_for('directions') }}" class="btn btn-ghost">✕</a>
+      {% endif %}
+      <div class="flex gap-2" style="margin-left:auto">
+        <a href="?sort=users&search={{ search }}"
+           class="sort-btn {% if sort_by == 'users' %}active{% endif %}">
+          👥 Foydalanuvchi
+        </a>
+        <a href="?sort=scores&search={{ search }}"
+           class="sort-btn {% if sort_by == 'scores' %}active{% endif %}">
+          📊 O'rtacha ball
+        </a>
+        <a href="?sort=name&search={{ search }}"
+           class="sort-btn {% if sort_by == 'name' %}active{% endif %}">
+          🔤 Nomi
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Yo'nalishlar jadvali -->
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Kod</th>
+          <th style="min-width:280px">Yo'nalish nomi</th>
+          <th>1-fan</th>
+          <th>2-fan</th>
+          <th>👥 Userlar</th>
+          <th>🧪 Testlar</th>
+          <th>Ø Ball</th>
+          <th>🏆 Best</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set max_users = dir_stats.values() | map(attribute='user_count') | max | default(1) %}
+        {% for d in directions %}
+        {% set st = dir_stats.get(d.id, {}) %}
+        <tr>
+          <td class="font-mono text-xs text-muted">{{ d.id }}</td>
+          <td>
+            <div class="fw-700" style="font-size:13px">
+              {{ d.name_uz[:50] }}{% if d.name_uz|length > 50 %}…{% endif %}
+            </div>
+            <div class="dir-stat-bar">
+              <div class="dir-stat-bar-fill"
+                   style="width:{{ [(st.user_count / max_users * 100) if max_users > 0 else 0, 2]|max }}%">
+              </div>
+            </div>
+          </td>
+          <td class="text-xs text-muted">
+            {{ subj_map.get(d.subject1_id, '—') }}
+          </td>
+          <td class="text-xs text-muted">
+            {{ subj_map.get(d.subject2_id, '—') }}
+          </td>
+          <td>
+            {% if st.user_count > 0 %}
+            <span class="badge badge-blue">{{ st.user_count }}</span>
+            {% else %}
+            <span class="text-muted text-xs">0</span>
+            {% endif %}
+          </td>
+          <td class="font-mono text-sm">{{ st.score_count or '—' }}</td>
+          <td>
+            {% if st.avg_score %}
+            <span class="font-mono text-sm
+              {% if st.avg_score >= 150 %}text-success
+              {% elif st.avg_score >= 100 %}text-accent
+              {% else %}text-muted{% endif %}">
+              {{ st.avg_score }}
+            </span>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if st.best_score %}
+            <span class="font-mono text-sm text-success fw-700">{{ st.best_score }}</span>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if st.user_count > 0 %}
+            <button class="btn btn-ghost btn-sm"
+                    onclick="showDirectionUsers('{{ d.id }}', '{{ d.name_uz[:30] }}')">
+              👥 Ko'rish
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">
+            Yo'nalish topilmadi
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Sahifalash -->
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="?page={{ page-1 }}&sort={{ sort_by }}&search={{ search }}" class="page-btn">←</a>
+  {% endif %}
+  {% for p in range([1,page-2]|max, [total_pages+1,page+3]|min) %}
+  <a href="?page={{ p }}&sort={{ sort_by }}&search={{ search }}"
+     class="page-btn {% if p==page %}active{% endif %}">{{ p }}</a>
+  {% endfor %}
+  {% if page < total_pages %}
+  <a href="?page={{ page+1 }}&sort={{ sort_by }}&search={{ search }}" class="page-btn">→</a>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- Yo'nalish userlar modali -->
+<div class="modal-overlay" id="dirUsersModal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title" id="dirModalTitle">👥 Yo'nalish foydalanuvchilari</div>
+    <div id="dirModalBody" style="max-height:400px;overflow-y:auto">
+      <div style="text-align:center;padding:30px;color:var(--muted)">⏳ Yuklanmoqda...</div>
+    </div>
+    <div class="mt-4">
+      <button class="btn btn-ghost w-full"
+              onclick="document.getElementById('dirUsersModal').classList.remove('open')">
+        Yopish
+      </button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function showDirectionUsers(dirId, dirName) {
+  const modal = document.getElementById('dirUsersModal');
+  const title = document.getElementById('dirModalTitle');
+  const body  = document.getElementById('dirModalBody');
+
+  title.textContent = `👥 ${dirName}`;
+  body.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)">⏳ Yuklanmoqda...</div>';
+  modal.classList.add('open');
+
+  try {
+    const r = await fetch(`/api/directions/${dirId}/users`);
+    const d = await r.json();
+    if (!d.success || !d.users.length) {
+      body.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)">Foydalanuvchi yo\'q</div>';
+      return;
+    }
+    body.innerHTML = d.users.map((u, i) => `
+      <div class="user-row">
+        <div class="user-rank">${i + 1}</div>
+        <div>
+          <div class="user-name">${u.first_name} ${u.last_name}</div>
+          <div class="user-phone">${u.phone}</div>
+        </div>
+        <div class="user-score">
+          ${u.best_score
+            ? `<span class="badge badge-blue font-mono">${u.best_score}</span>`
+            : `<span class="text-muted text-xs">test yo'q</span>`}
+        </div>
+        <a href="/users/${u.id}" class="btn btn-ghost btn-sm">→</a>
+      </div>
+    `).join('');
+  } catch(e) {
+    body.innerHTML = '<div class="alert alert-error">❌ Xato yuz berdi</div>';
+  }
+}
+
+document.getElementById('dirUsersModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+});
+</script>
+{% endblock %}

@@ -98,6 +98,8 @@ class User(Base):
     answers             = relationship("UserAnswer", back_populates="user")
     leaderboard_entries = relationship("Leaderboard", back_populates="user")
     scores              = relationship("Score", back_populates="user")
+    referral_link       = relationship("ReferralLink", back_populates="user",
+                                       foreign_keys="ReferralLink.user_id", uselist=False)
 
 
 class TestSession(Base):
@@ -164,7 +166,7 @@ class Leaderboard(Base):
     direction_id    = Column(String(10), ForeignKey('directions.id'), nullable=False)
     rank            = Column(Integer, nullable=False)
     total_score     = Column(Float, nullable=False)
-    period          = Column(String(20), default='daily')   # daily, weekly, all_time
+    period          = Column(String(20), default='daily')
     timestamp       = Column(DateTime, default=datetime.utcnow)
     test_session    = relationship("TestSession", back_populates="leaderboard")
     user            = relationship("User", back_populates="leaderboard_entries")
@@ -172,24 +174,15 @@ class Leaderboard(Base):
 
 
 class Score(Base):
-    """
-    YANGILANDI:
-      - is_archived:     True = bu natija arxivlangan (user qayta test yechdi)
-      - attempted_count: Foydalanuvchi javob bergan savollar soni (0-90)
-                         Skip qilingan va yechilmagan savollar hisoblanmaydi.
-      - total_questions: Har doim 90 (to'liq test hajmi)
-      - correct_count:   To'g'ri javoblar soni
-      - Foiz = correct_count / 90 * 100
-    """
     __tablename__ = 'scores'
     id               = Column(Integer, primary_key=True)
     user_id          = Column(Integer, ForeignKey('users.id'), nullable=False)
     participation_id = Column(Integer, ForeignKey('user_test_participation.id'), nullable=True)
     score            = Column(Float, nullable=False)
     correct_count    = Column(Integer, nullable=False)
-    attempted_count  = Column(Integer, default=0)   # Javob berilgan savollar soni
-    total_questions  = Column(Integer, nullable=False)   # Har doim 90
-    is_archived      = Column(Boolean, default=False)    # Arxivlangan natija
+    attempted_count  = Column(Integer, default=0)
+    total_questions  = Column(Integer, nullable=False)
+    is_archived      = Column(Boolean, default=False)
     created_at       = Column(DateTime, default=datetime.utcnow)
     user             = relationship("User", back_populates="scores")
 
@@ -228,3 +221,48 @@ class BroadcastMessage(Base):
     status             = Column(String(20), default='pending')
     created_at         = Column(DateTime, default=datetime.utcnow)
     finished_at        = Column(DateTime, nullable=True)
+
+
+# ─── Referal tizimi ───────────────────────────────────────────────────────────
+
+class ReferralSettings(Base):
+    """
+    Global referal sozlamalari — faqat bitta qator bo'ladi (id=1).
+    Admin paneldan boshqariladi.
+    """
+    __tablename__ = 'referral_settings'
+    id             = Column(Integer, primary_key=True)
+    is_enabled     = Column(Boolean, default=False)    # Referal tizimi yoqilganmi?
+    required_count = Column(Integer, default=0)        # 0 = talab yo'q, N = N ta referal kerak
+    reward_message = Column(Text, nullable=True)       # Talab bajarilganda xabar
+    created_at     = Column(DateTime, default=datetime.utcnow)
+    updated_at     = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ReferralLink(Base):
+    """
+    Har bir user uchun unikal referal link va statistika.
+    """
+    __tablename__ = 'referral_links'
+    id            = Column(Integer, primary_key=True)
+    user_id       = Column(Integer, ForeignKey('users.id'), unique=True, nullable=False)
+    code          = Column(String(20), unique=True, nullable=False)  # ref_XXXXXXXX
+    invited_count = Column(Integer, default=0)
+    created_at    = Column(DateTime, default=datetime.utcnow)
+
+    user    = relationship("User", foreign_keys=[user_id], back_populates="referral_link")
+    invites = relationship("ReferralInvite", back_populates="referrer_link")
+
+
+class ReferralInvite(Base):
+    """
+    Kim kimni taklif qilgani — har bir yangi user uchun bitta yozuv.
+    """
+    __tablename__ = 'referral_invites'
+    id               = Column(Integer, primary_key=True)
+    referral_link_id = Column(Integer, ForeignKey('referral_links.id'), nullable=False)
+    invited_user_id  = Column(Integer, ForeignKey('users.id'), unique=True, nullable=False)
+    created_at       = Column(DateTime, default=datetime.utcnow)
+
+    referrer_link = relationship("ReferralLink", back_populates="invites")
+    invited_user  = relationship("User", foreign_keys=[invited_user_id])
