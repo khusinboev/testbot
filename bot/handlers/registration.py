@@ -24,6 +24,8 @@ O'ZGARTIRISHLAR:
 """
 from __future__ import annotations
 
+import urllib.parse
+
 from aiogram import Router, types, F, Bot
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -166,12 +168,14 @@ async def referral_gate(bot: Bot, telegram_id: int, message: types.Message) -> b
     filled    = min(invited, required)
     bar       = "🟢" * filled + "⚪️" * (required - filled)
 
+    # YANGI — qo'ying (import urllib.parse ni funksiya boshiga qo'shing):
+    share_url = (
+        f"https://t.me/share/url"
+        f"?url={urllib.parse.quote(link_url, safe='')}"
+        f"&text={urllib.parse.quote('👨‍🏫Sizni DTM testlar botiga taklif qilaman! 🎓', safe='')}"
+    )
     ref_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="📤 Havolani ulashish",
-            switch_inline_query=f"Men sizni DTM Test Bot ga taklif qilmoqchiman! {link_url}"
-        )],
-        [InlineKeyboardButton(text="🔄 Yangilash", callback_data="check_referral")],
+        [InlineKeyboardButton(text="📤 Do'stlarga ulashish", url=share_url)],
     ])
 
     await message.answer(
@@ -1101,11 +1105,14 @@ async def show_my_referral(message: types.Message, state: FSMContext, bot: Bot):
     else:
         progress = f"\n\n👥 Jami taklif qilganlar: <b>{invited}</b> ta"
 
+    # YANGI — qo'ying (import urllib.parse ni funksiya boshiga qo'shing):
+    share_url = (
+        f"https://t.me/share/url"
+        f"?url={urllib.parse.quote(link_url, safe='')}"
+        f"&text={urllib.parse.quote('👨‍🏫Sizni DTM testlar botiga taklif qilaman! 🎓', safe='')}"
+    )
     ref_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="📤 Do'stlarga ulashish",
-            switch_inline_query=f"DTM Test Bot ga kiring! 🎓 {link_url}"
-        )],
+        [InlineKeyboardButton(text="📤 Do'stlarga ulashish", url=share_url)],
     ])
 
     await message.answer(
