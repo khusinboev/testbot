@@ -1,8 +1,5 @@
 """
-utils/scheduler.py
-
-TUZATILDI:
-  - X | Y type hint → Optional[] (Python 3.8 mos)
+utils/scheduler.py — attempted_count ko'rsatishga yangilandi
 """
 import asyncio
 import logging
@@ -10,6 +7,7 @@ from datetime import datetime
 from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from utils.test_service import TOTAL_TEST_QUESTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -52,18 +50,20 @@ async def _auto_finish_expired_tests() -> None:
             try:
                 score_info = TestService.complete_test(participation_id)
                 if _bot_instance and score_info:
-                    pct = (
-                        score_info['correct_count'] / score_info['total_questions'] * 100
-                        if score_info['total_questions'] > 0 else 0
-                    )
+                    correct   = score_info['correct_count']
+                    attempted = score_info.get('attempted_count', 0)
+                    score_val = score_info['score']
+                    pct       = round(correct / TOTAL_TEST_QUESTIONS * 100, 1)
+
                     text = (
                         "⏰ <b>Imtihon vaqti tugadi!</b>\n\n"
-                        f"• 📈 Ball: <b>{score_info['score']}</b>\n"
-                        f"• ✅ To'g'ri: {score_info['correct_count']}"
-                        f"/{score_info['total_questions']}\n"
-                        f"• 📊 Foiz: {pct:.1f}%\n\n"
+                        f"📈 Ball: <b>{score_val}</b>\n"
+                        f"✅ To'g'ri: <b>{correct}</b> ta\n"
+                        f"📝 Yechildi: <b>{attempted}/{TOTAL_TEST_QUESTIONS}</b>\n"
+                        f"📊 Foiz: <b>{pct}%</b>\n\n"
                         "🏆 Reytingda o'zingizni tekshiring!"
                     )
+
                     from database.db import Session
                     from database.models import User
                     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton

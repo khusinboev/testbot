@@ -13,7 +13,7 @@ except ImportError:
     raise ImportError("openpyxl o'rnatilmagan. `pip install openpyxl` qiling.")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EXCEL_FILES = [os.path.join(BASE_DIR, "Fanlar_majmuasi_2025-2026.xlsx")]
+EXCEL_FILES = [os.path.join(BASE_DIR, "../Fanlar_majmuasi_2025-2026.xlsx")]
 
 SUBJECT_MAP = {
     "matematika": 1,

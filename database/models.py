@@ -164,7 +164,7 @@ class Leaderboard(Base):
     direction_id    = Column(String(10), ForeignKey('directions.id'), nullable=False)
     rank            = Column(Integer, nullable=False)
     total_score     = Column(Float, nullable=False)
-    period          = Column(String(20), default='daily')  # daily, weekly, all_time
+    period          = Column(String(20), default='daily')   # daily, weekly, all_time
     timestamp       = Column(DateTime, default=datetime.utcnow)
     test_session    = relationship("TestSession", back_populates="leaderboard")
     user            = relationship("User", back_populates="leaderboard_entries")
@@ -172,15 +172,25 @@ class Leaderboard(Base):
 
 
 class Score(Base):
+    """
+    YANGILANDI:
+      - is_archived:     True = bu natija arxivlangan (user qayta test yechdi)
+      - attempted_count: Foydalanuvchi javob bergan savollar soni (0-90)
+                         Skip qilingan va yechilmagan savollar hisoblanmaydi.
+      - total_questions: Har doim 90 (to'liq test hajmi)
+      - correct_count:   To'g'ri javoblar soni
+      - Foiz = correct_count / 90 * 100
+    """
     __tablename__ = 'scores'
     id               = Column(Integer, primary_key=True)
     user_id          = Column(Integer, ForeignKey('users.id'), nullable=False)
     participation_id = Column(Integer, ForeignKey('user_test_participation.id'), nullable=True)
     score            = Column(Float, nullable=False)
     correct_count    = Column(Integer, nullable=False)
-    total_questions  = Column(Integer, nullable=False)
+    attempted_count  = Column(Integer, default=0)   # Javob berilgan savollar soni
+    total_questions  = Column(Integer, nullable=False)   # Har doim 90
+    is_archived      = Column(Boolean, default=False)    # Arxivlangan natija
     created_at       = Column(DateTime, default=datetime.utcnow)
-    # TUZATILDI: back_populates qo'shildi — User.scores bilan mos
     user             = relationship("User", back_populates="scores")
 
 

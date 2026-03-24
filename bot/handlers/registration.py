@@ -1,12 +1,11 @@
 """
-bot/handlers/registration.py
+bot/handlers/registration.py  — score display tuzatildi
 
-TUZATILDI:
-  1. tuple/Optional type hints → Python 3.8 mos (from __future__ import annotations)
-  2. get_direction_leaderboard() — endi dict qaytaradi, s.user ishlatilmaydi
-  3. handle_test_answer() — har javobda DB tekshiruv o'rniga, deadline ni
-     FSM state ga bir marta saqlaymiz (snapshot_interval optimallashtirish)
-  4. confirm_test_start() — stale participationlarni tozalash to'g'rilandi
+O'zgarishlar:
+  - _format_score_result(): yangi helper, hamma natija xabarlarini bir joyda
+  - attempted_count / total (90) ko'rsatiladi
+  - Foiz = correct / 90 * 100
+  - Arxivlangan natijalar shaxsiy natijalar bo'limida belgilanadi
 """
 from __future__ import annotations
 
@@ -29,7 +28,7 @@ from bot.keyboards import (
     get_test_confirmation_keyboard, get_test_answer_keyboard,
     get_test_results_keyboard, get_profile_settings_keyboard,
 )
-from utils.test_service import TestService
+from utils.test_service import TestService, TOTAL_TEST_QUESTIONS
 from utils.locks import user_lock, is_processing, throttle_check
 from utils.channel_service import (
     subscription_gate, check_user_subscriptions, build_subscribe_keyboard
@@ -46,6 +45,33 @@ router = Router()
 def _err(e: Exception) -> str:
     logger.error("Handler xato:\n%s", traceback.format_exc())
     return f"❌ Xato: {str(e)[:150]}"
+
+
+def _format_score_result(score_info: dict, prefix: str = "✅ <b>Imtihon tugallandi!</b>") -> str:
+    """
+    Natija xabarini formatlaydi.
+    score_info: complete_test() dan kelgan dict
+    - correct_count / 90 * 100 = foiz
+    - attempted_count = javob berilgan savollar soni
+    """
+    score        = score_info.get('score', 0)
+    correct      = score_info.get('correct_count', 0)
+    attempted    = score_info.get('attempted_count', 0)
+    total        = TOTAL_TEST_QUESTIONS  # Har doim 90
+    pct          = round(correct / total * 100, 1)
+    unanswered   = total - attempted
+
+    lines = [
+        prefix, "",
+        f"📈 Ball: <b>{score}</b>",
+        f"✅ To'g'ri: <b>{correct}</b> ta",
+        f"📝 Yechildi: <b>{attempted}/{total}</b>",
+        f"📊 Foiz: <b>{pct}%</b>",
+    ]
+    if unanswered > 0:
+        lines.append(f"⏭ Yechilmadi: {unanswered} ta")
+    lines.append("\n🏆 Reytingda o'zingizni tekshiring!")
+    return "\n".join(lines)
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -285,6 +311,8 @@ async def process_confirmation(callback_query: types.CallbackQuery, state: FSMCo
             db.close()
 
 
+# ─── Leaderboard ─────────────────────────────────────────────────────────────
+
 @router.message(UserMainMenuStates.main_menu, F.text == "🏆 Reyting")
 async def show_leaderboard(message: types.Message, state: FSMContext):
     user = get_user_by_telegram_id(message.from_user.id)
@@ -294,16 +322,15 @@ async def show_leaderboard(message: types.Message, state: FSMContext):
 
     if not user.direction_id:
         await message.answer(
-            "❗ <b>Yo'nalish tanlang!</b>\n\n"
-            "Reytingni ko'rish uchun avval ta'lim yo'nalishingizni belgilang.",
+            "❗ <b>Yo'nalish tanlang!</b>\n\nReytingni ko'rish uchun avval "
+            "ta'lim yo'nalishingizni belgilang.",
             parse_mode="HTML"
         )
         return
 
-    # Period tanlash
     period_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📅 Kunlik", callback_data="leaderboard_daily")],
-        [InlineKeyboardButton(text="📊 Haftalik", callback_data="leaderboard_weekly")],
+        [InlineKeyboardButton(text="📅 Kunlik",      callback_data="leaderboard_daily")],
+        [InlineKeyboardButton(text="📊 Haftalik",    callback_data="leaderboard_weekly")],
         [InlineKeyboardButton(text="🏆 Barcha vaqt", callback_data="leaderboard_all_time")],
     ])
     await message.answer(
@@ -316,8 +343,8 @@ async def show_leaderboard(message: types.Message, state: FSMContext):
 @router.callback_query(F.data.startswith("leaderboard_"))
 async def handle_leaderboard_period(callback_query: types.CallbackQuery, state: FSMContext):
     period_map = {
-        "leaderboard_daily": "daily",
-        "leaderboard_weekly": "weekly",
+        "leaderboard_daily":    "daily",
+        "leaderboard_weekly":   "weekly",
         "leaderboard_all_time": "all_time"
     }
     period = period_map.get(callback_query.data)
@@ -331,36 +358,37 @@ async def handle_leaderboard_period(callback_query: types.CallbackQuery, state: 
 
     leaderboard = TestService.get_direction_leaderboard(user.direction_id, period, limit=10)
 
+    period_names = {"daily": "Kunlik", "weekly": "Haftalik", "all_time": "Barcha vaqt"}
+
     if not leaderboard:
-        text = "📊 <b>Reyting hali mavjud emas</b>\n\nBu davrda test yechganlar yo'q."
+        text = (
+            f"📊 <b>{period_names[period]} reyting</b>\n"
+            f"📚 {user.direction.name_uz}\n\n"
+            "<i>Bu davrda test yechganlar yo'q.</i>"
+        )
     else:
-        period_names = {
-            "daily": "Kunlik",
-            "weekly": "Haftalik",
-            "all_time": "Barcha vaqt"
-        }
         text = f"🏆 <b>{period_names[period]} Reyting</b>\n📚 {user.direction.name_uz}\n\n"
+        user_in_top = False
         for entry in leaderboard:
             medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(entry['rank'], f"{entry['rank']}.")
             name = f"{entry['first_name']} {entry['last_name'] or ''}".strip()
-            text += f"{medal} {name} — {entry['score']:.1f} ball\n"
-
-        # Userning o'rni
-        user_rank = None
-        for entry in leaderboard:
+            me = " 👈 <b>Siz</b>" if entry['user_id'] == user.id else ""
             if entry['user_id'] == user.id:
-                user_rank = entry['rank']
-                break
+                user_in_top = True
+            text += f"{medal} {name} — <b>{entry['score']:.1f}</b> ball{me}\n"
 
-        if user_rank:
-            text += f"\n👤 <b>Sizning o'rningiz: {user_rank}</b>"
-        else:
-            text += f"\n👤 Siz hali {period_names[period].lower()} reytingda emassiz"
+        if not user_in_top:
+            rank = TestService.get_user_direction_rank(user.id, user.direction_id)
+            text += f"\n👤 Sizning o'rningiz: <b>#{rank}</b>"
 
     try:
         await callback_query.message.edit_text(text, parse_mode="HTML")
     except Exception:
         await callback_query.message.answer(text, parse_mode="HTML")
+    await callback_query.answer()
+
+
+# ─── Testni boshlash ─────────────────────────────────────────────────────────
 
 @router.message(UserMainMenuStates.main_menu, F.text == "🧪 Testni boshlash")
 async def start_test_button(message: types.Message, state: FSMContext, bot: Bot):
@@ -388,13 +416,12 @@ async def start_test_button(message: types.Message, state: FSMContext, bot: Bot)
             await message.answer(
                 f"⚠️ <b>Tugallanmagan test bor!</b>\n\n"
                 f"• 🕐 Qolgan: <b>{mins} daq {secs} sek</b>\n"
-                f"• 📝 Savol: {snapshot['current_question_index'] + 1}/90\n"
+                f"• 📝 Savol: {snapshot['current_question_index'] + 1}/{TOTAL_TEST_QUESTIONS}\n"
                 f"• ✅ Javob berilgan: {answered} ta",
                 reply_markup=resume_kb, parse_mode="HTML"
             )
             return
         else:
-            # Snapshot yo'q → yakunlaymiz
             TestService.complete_test(active.id)
 
     if not user.direction_id:
@@ -455,12 +482,7 @@ async def handle_test_resume(callback_query: types.CallbackQuery,
         keyboard = await get_main_menu_keyboard()
         result_text = "⏰ Test vaqti tugadi."
         if score_info:
-            pct = score_info['correct_count'] / score_info['total_questions'] * 100 if score_info['total_questions'] else 0
-            result_text = (
-                f"⏰ <b>Vaqt tugadi!</b>\n\n"
-                f"• 📈 Ball: {score_info['score']}\n"
-                f"• ✅ {score_info['correct_count']}/{score_info['total_questions']} ({pct:.1f}%)"
-            )
+            result_text = _format_score_result(score_info, "⏰ <b>Vaqt tugadi!</b>")
         await callback_query.message.answer(result_text, reply_markup=keyboard, parse_mode="HTML")
         await state.set_state(UserMainMenuStates.main_menu)
         return
@@ -476,7 +498,7 @@ async def handle_test_resume(callback_query: types.CallbackQuery,
         questions=questions,
         current_question_index=current_idx,
         answers=snapshot['answers'],
-        deadline_ts=active.deadline_at.timestamp(),   # float — JSON serializable
+        deadline_ts=active.deadline_at.timestamp(),
     )
 
     try:
@@ -536,15 +558,12 @@ async def handle_force_new_test(callback_query: types.CallbackQuery, state: FSMC
 
 
 async def _show_test_confirmation(message: types.Message, state: FSMContext, user: User):
-    """
-    TUZATILDI: Kunlik test cheklovi qo'shildi.
-    """
-    from datetime import datetime
+    from sqlalchemy import func as sqlfunc
     db = Session()
     today = datetime.utcnow().date()
     existing_today = db.query(UserTestParticipation).filter(
         UserTestParticipation.user_id == user.id,
-        func.date(UserTestParticipation.started_at) == today,
+        sqlfunc.date(UserTestParticipation.started_at) == today,
         UserTestParticipation.status.in_(['active', 'completed'])
     ).first()
     db.close()
@@ -570,7 +589,7 @@ async def _show_test_confirmation(message: types.Message, state: FSMContext, use
 
     await message.answer(
         f"📝 <b>Imtihon boshlash</b>\n\n"
-        f"⏱️ <b>180 daqiqa</b> | ❓ <b>90 savol</b>\n\n"
+        f"⏱️ <b>180 daqiqa</b> | ❓ <b>{TOTAL_TEST_QUESTIONS} savol</b>\n\n"
         f"1️⃣ Matematika (10) · 2️⃣ Ona tili (10) · 3️⃣ Tarix (10)\n"
         f"4️⃣ 1-asosiy fan (30) · 5️⃣ 2-asosiy fan (30)\n\n"
         f"{direction_line}\n\n<b>Boshlaysizmi?</b>",
@@ -653,7 +672,6 @@ async def confirm_test_start(callback_query: types.CallbackQuery,
             await callback_query.answer("❌ Foydalanuvchi topilmadi!", show_alert=True)
             return
 
-        # Haqiqiy aktiv test (vaqti o'tmagan)
         db  = Session()
         now = datetime.utcnow()
         active = db.query(UserTestParticipation).filter(
@@ -688,7 +706,7 @@ async def confirm_test_start(callback_query: types.CallbackQuery,
                 )
                 return
 
-            questions     = TestService.get_test_questions(user.direction_id)
+            questions = TestService.get_test_questions(user.direction_id)
 
             if not questions:
                 await callback_query.answer("❌ Savollar topilmadi!", show_alert=True)
@@ -775,7 +793,7 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
         answers          = data.get('answers', {})
         participation_id = data.get('participation_id')
         test_session_id  = data.get('test_session_id')
-        deadline_ts      = data.get('deadline_ts')   # float timestamp — DB ga bormaydi
+        deadline_ts      = data.get('deadline_ts')
 
         if not questions or participation_id is None:
             await callback_query.answer("❌ Test topilmadi.", show_alert=True)
@@ -789,7 +807,7 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
             await callback_query.answer()
             return
 
-        # TUZATILDI: deadline tekshiruvi — FSM state dan (har javobda DB ga bormaslik)
+        # Deadline tekshiruvi — FSM state dan (DB ga bormaydi)
         if deadline_ts and datetime.utcnow().timestamp() > deadline_ts:
             score_info = TestService.complete_test(participation_id)
             try:
@@ -800,12 +818,7 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
             await state.set_state(UserMainMenuStates.main_menu)
             result_text = "⏰ Test vaqti tugadi!"
             if score_info:
-                pct = score_info['correct_count'] / score_info['total_questions'] * 100 if score_info['total_questions'] else 0
-                result_text = (
-                    f"⏰ <b>Vaqt tugadi!</b>\n\n"
-                    f"• 📈 Ball: <b>{score_info['score']}</b>\n"
-                    f"• ✅ {score_info['correct_count']}/{score_info['total_questions']} ({pct:.1f}%)"
-                )
+                result_text = _format_score_result(score_info, "⏰ <b>Vaqt tugadi!</b>")
             await callback_query.message.answer(
                 result_text, reply_markup=get_test_results_keyboard(), parse_mode="HTML"
             )
@@ -830,7 +843,6 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
 
         current_index += 1
 
-        # Snapshotni har 5 javobda saqlash (DB loadni kamaytirish)
         if current_index % 5 == 0 or current_index >= len(questions):
             TestService.save_snapshot(participation_id, questions, current_index, answers)
 
@@ -843,16 +855,9 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
             await state.clear()
             await state.set_state(UserMainMenuStates.main_menu)
 
-            if score_info:
-                pct = score_info['correct_count'] / score_info['total_questions'] * 100 if score_info['total_questions'] else 0
-                result_text = (
-                    f"✅ <b>Imtihon tugallandi!</b>\n\n"
-                    f"• 📈 Ball: <b>{score_info['score']}</b>\n"
-                    f"• ✅ {score_info['correct_count']}/{score_info['total_questions']}\n"
-                    f"• 📊 {pct:.1f}%\n\n🏆 Reytingda o'zingizni tekshiring!"
-                )
-            else:
-                result_text = "✅ Imtihon tugallandi!"
+            result_text = (
+                _format_score_result(score_info) if score_info else "✅ Imtihon tugallandi!"
+            )
             await callback_query.message.answer(
                 result_text, reply_markup=get_test_results_keyboard(), parse_mode="HTML"
             )
@@ -897,17 +902,9 @@ async def finish_test_early(callback_query: types.CallbackQuery, state: FSMConte
         await state.clear()
         await state.set_state(UserMainMenuStates.main_menu)
 
-        if score_info:
-            pct = score_info['correct_count'] / score_info['total_questions'] * 100 if score_info['total_questions'] else 0
-            result_text = (
-                f"✅ <b>Imtihon tugallandi!</b>\n\n"
-                f"• 📈 Ball: <b>{score_info['score']}</b>\n"
-                f"• ✅ {score_info['correct_count']}/{score_info['total_questions']}\n"
-                f"• 📊 {pct:.1f}%"
-            )
-        else:
-            result_text = "✅ Imtihon tugallandi!"
-
+        result_text = (
+            _format_score_result(score_info) if score_info else "✅ Imtihon tugallandi!"
+        )
         await callback_query.message.answer(
             result_text, reply_markup=get_test_results_keyboard(), parse_mode="HTML"
         )
@@ -922,101 +919,63 @@ async def show_my_results(message: types.Message, state: FSMContext):
     if not user:
         await message.answer("❌ Ro'yxatdan o'tmagan edingiz!")
         return
-    db = Session()
-    try:
-        scores = db.query(Score).filter(
-            Score.user_id == user.id
-        ).order_by(Score.created_at.desc()).all()
-        if not scores:
-            await message.answer(
-                "📊 <b>Hali test topshirilmagan.</b>", parse_mode="HTML"
-            )
-            return
-        text = "📊 <b>Natijalaringiz:</b>\n\n"
-        for i, s in enumerate(scores[:5], 1):
-            pct = s.correct_count / s.total_questions * 100 if s.total_questions else 0
-            text += (
-                f"{i}. {s.created_at.strftime('%d.%m.%Y %H:%M')}\n"
-                f"   📈 {s.score} | ✅ {s.correct_count}/{s.total_questions} ({pct:.1f}%)\n\n"
-            )
-        await message.answer(text, parse_mode="HTML")
-    finally:
-        db.close()
 
+    # include_archived=True — shaxsiy natijalar, hammasi ko'rinadi
+    scores = TestService.get_user_scores(user.id, include_archived=True, limit=10)
 
-# ─── Reyting ─────────────────────────────────────────────────────────────────
-
-@router.message(UserMainMenuStates.main_menu, F.text == "🏆 Reyting")
-async def show_leaderboard(message: types.Message, state: FSMContext):
-    user = get_user_by_telegram_id(message.from_user.id)
-    if not user:
-        await message.answer("❌ Ro'yxatdan o'tmagan edingiz!")
+    if not scores:
+        await message.answer("📊 <b>Hali test topshirilmagan.</b>", parse_mode="HTML")
         return
 
-    db = Session()
-    try:
-        if user.direction_id and user.direction:
-            direction_name = user.direction.name_uz
-            rank           = TestService.get_user_direction_rank(user.id, user.direction_id)
-            user_best_obj  = db.query(Score).filter(
-                Score.user_id == user.id
-            ).order_by(Score.score.desc()).first()
-            user_best_score = user_best_obj.score if user_best_obj else 0
+    text = "📊 <b>Natijalaringiz:</b>\n\n"
+    for i, s in enumerate(scores[:10], 1):
+        archive_tag = " 🗃 <i>arxiv</i>" if s['is_archived'] else ""
+        text += (
+            f"{i}. {s['created_at'].strftime('%d.%m.%Y %H:%M')}{archive_tag}\n"
+            f"   📈 {s['score']:.1f} ball | ✅ {s['correct_count']}/{TOTAL_TEST_QUESTIONS}"
+            f" | 📝 yechdi: {s['attempted_count']} | 📊 {s['percentage']}%\n\n"
+        )
+    await message.answer(text, parse_mode="HTML")
 
-            # TUZATILDI: get_direction_leaderboard → dict list qaytaradi
-            top_scores = TestService.get_direction_leaderboard(user.direction_id, limit=5)
 
-            text = f"🏆 <b>Yo'nalish reytingi</b>\n📚 <i>{direction_name}</i>\n\n"
-            if top_scores:
-                text += "<b>Top 5:</b>\n"
-                for i, s in enumerate(top_scores, 1):
-                    medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"#{i}"
-                    is_me = " 👈 <b>Siz</b>" if s['user_id'] == user.id else ""
-                    text += (
-                        f"{medal} <b>{s['first_name']} {s['last_name']}</b> "
-                        f"— {s['score']} ball{is_me}\n"
-                    )
-            else:
-                text += "<i>Hali natija yo'q</i>\n"
+# ─── Reyting (main menu tugmasi) ─────────────────────────────────────────────
 
-            text += (
-                f"\n📍 <b>Sizning o'rningiz:</b> #{rank}\n"
-                f"📊 <b>Eng yuqori ballingiz:</b> {user_best_score}"
-            )
-            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="🌐 Umumiy top-10", callback_data="leaderboard_global")
-            ]])
-            await message.answer(text, parse_mode="HTML", reply_markup=kb)
-        else:
-            await _show_global_leaderboard(message, db)
-    finally:
-        db.close()
+@router.message(UserMainMenuStates.main_menu, F.text == "🏆 Reyting")
+async def show_leaderboard_menu(message: types.Message, state: FSMContext):
+    # Bu handler yuqoridagi show_leaderboard bilan bir xil — ikkinchisi ustun turadi
+    pass
 
 
 @router.callback_query(F.data == "leaderboard_global")
 async def show_global_leaderboard_cb(callback_query: types.CallbackQuery, state: FSMContext):
     db = Session()
     try:
-        await _show_global_leaderboard(callback_query.message, db)
+        top_scores = (
+            db.query(Score)
+            .filter(Score.is_archived == False)
+            .order_by(Score.score.desc())
+            .limit(10)
+            .all()
+        )
+        if not top_scores:
+            await callback_query.message.answer(
+                "🏆 <b>Reytingda hali hech kim yo'q.</b>", parse_mode="HTML"
+            )
+            await callback_query.answer()
+            return
+        text = "🏆 <b>Umumiy reyting (Top 10)</b>\n\n"
+        for i, s in enumerate(top_scores, 1):
+            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"#{i}"
+            u = s.user
+            pct = round(s.correct_count / TOTAL_TEST_QUESTIONS * 100, 1)
+            text += (
+                f"{medal} <b>{u.first_name} {u.last_name or ''}</b>\n"
+                f"   📊 {s.score:.1f} | ✅ {s.correct_count}/{TOTAL_TEST_QUESTIONS} ({pct}%)\n\n"
+            )
+        await callback_query.message.answer(text, parse_mode="HTML")
     finally:
         db.close()
     await callback_query.answer()
-
-
-async def _show_global_leaderboard(message: types.Message, db):
-    top_scores = db.query(Score).order_by(Score.score.desc()).limit(10).all()
-    if not top_scores:
-        await message.answer("🏆 <b>Reytingda hali hech kim yo'q.</b>", parse_mode="HTML")
-        return
-    text = "🏆 <b>Umumiy reyting (Top 10)</b>\n\n"
-    for i, s in enumerate(top_scores, 1):
-        medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"#{i}"
-        u = s.user
-        text += (
-            f"{medal} <b>{u.first_name} {u.last_name or ''}</b>\n"
-            f"   📊 {s.score} | ✅ {s.correct_count}/{s.total_questions}\n\n"
-        )
-    await message.answer(text, parse_mode="HTML")
 
 
 # ─── Yordam ───────────────────────────────────────────────────────────────────
@@ -1025,12 +984,13 @@ async def _show_global_leaderboard(message: types.Message, db):
 async def show_help(message: types.Message, state: FSMContext):
     await message.answer(
         "❓ <b>Yordam</b>\n\n"
-        "180 daqiqa · 90 savol\n\n"
+        f"180 daqiqa · {TOTAL_TEST_QUESTIONS} savol\n\n"
         "  1️⃣ Matematika (10) — 1.1 ball\n"
         "  2️⃣ Ona tili (10) — 1.1 ball\n"
         "  3️⃣ Tarix (10) — 1.1 ball\n"
         "  4️⃣ 1-asosiy fan (30) — 3.1 ball\n"
-        "  5️⃣ 2-asosiy fan (30) — 2.1 ball",
+        "  5️⃣ 2-asosiy fan (30) — 2.1 ball\n\n"
+        "<b>Foiz hisoblash:</b> to'g'ri / 90 × 100",
         parse_mode="HTML"
     )
 
@@ -1043,33 +1003,35 @@ async def show_profile(message: types.Message, state: FSMContext):
     if not user:
         await message.answer("❌ Ro'yxatdan o'tmagan edingiz!")
         return
-    db = Session()
-    try:
-        scores     = db.query(Score).filter(Score.user_id == user.id).all()
-        best_score = max((s.score for s in scores), default=0)
 
-        if user.direction:
-            s1, s2 = _get_direction_subject_names(user.direction)
-            dir_block = (
-                f"• 📚 {user.direction.name_uz}\n"
-                f"• 📖 1-fan: {s1}\n• 📗 2-fan: {s2}"
-            )
-        else:
-            dir_block = "• 📚 ❗ Yo'nalish belgilanmagan"
+    # Faqat non-archived scorlar — hozirgi holat uchun
+    active_scores = TestService.get_user_scores(user.id, include_archived=False, limit=100)
+    all_scores    = TestService.get_user_scores(user.id, include_archived=True, limit=100)
 
-        await message.answer(
-            f"👤 <b>Profil</b>\n\n"
-            f"• 📝 {user.first_name} {user.last_name or ''}\n"
-            f"• 📱 {user.phone}\n"
-            f"• 📍 {user.region.name_uz} / {user.district.name_uz}\n"
-            f"{dir_block}\n\n"
-            f"• 🧪 {len(scores)} ta test | 📊 {best_score} best\n"
-            f"• 📅 {user.created_at.strftime('%d.%m.%Y')}\n\n"
-            f"<b>Tahrirlash:</b>",
-            reply_markup=get_profile_settings_keyboard(), parse_mode="HTML"
+    best_score = max((s['score'] for s in active_scores), default=0)
+    total_tests = len(all_scores)
+
+    if user.direction:
+        s1, s2 = _get_direction_subject_names(user.direction)
+        dir_block = (
+            f"• 📚 {user.direction.name_uz}\n"
+            f"• 📖 1-fan: {s1}\n• 📗 2-fan: {s2}"
         )
-    finally:
-        db.close()
+    else:
+        dir_block = "• 📚 ❗ Yo'nalish belgilanmagan"
+
+    await message.answer(
+        f"👤 <b>Profil</b>\n\n"
+        f"• 📝 {user.first_name} {user.last_name or ''}\n"
+        f"• 📱 {user.phone}\n"
+        f"• 📍 {user.region.name_uz} / {user.district.name_uz}\n"
+        f"{dir_block}\n\n"
+        f"• 🧪 Jami testlar: {total_tests} ta\n"
+        f"• 📊 Eng yaxshi ball: {best_score:.1f}\n"
+        f"• 📅 Ro'yxat: {user.created_at.strftime('%d.%m.%Y')}\n\n"
+        f"<b>Tahrirlash:</b>",
+        reply_markup=get_profile_settings_keyboard(), parse_mode="HTML"
+    )
 
 
 @router.callback_query(F.data == "profile_back")
@@ -1205,15 +1167,12 @@ async def handle_any_direction_chosen(message: types.Message, state: FSMContext)
     if user_db:
         user_db.direction_id = direction_id
         db.commit()
-
     direction_name = direction.name_uz
     db.close()
 
     current_state = await state.get_state()
     user          = get_user_by_telegram_id(message.from_user.id)
-    await message.answer(
-        f"✅ Yo'nalish: <b>{direction_name}</b>", parse_mode="HTML"
-    )
+    await message.answer(f"✅ Yo'nalish: <b>{direction_name}</b>", parse_mode="HTML")
     if current_state in (
         TestSessionStates.waiting_for_direction,
         TestSessionStates.searching_direction,

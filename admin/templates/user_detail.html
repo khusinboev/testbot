@@ -67,27 +67,30 @@
 
   <!-- Stats -->
   <div>
-    <!-- Score summary -->
+    <!-- Score summary — faqat non-archived (joriy holat) -->
     <div class="card mb-4">
       <div class="card-header">
-        <span class="card-title">📊 Natijalar statistikasi</span>
+        <span class="card-title">📊 Joriy natijalar statistikasi</span>
+        <span class="text-muted text-xs">Arxivlanmaganlar</span>
       </div>
       <div class="card-body">
-        {% if scores %}
-        {% set best = scores | map(attribute='score') | max %}
-        {% set avg  = (scores | map(attribute='score') | sum) / scores|length %}
+        {% set active_scores = scores | selectattr('is_archived', 'equalto', False) | list %}
+        {% if active_scores %}
+        {% set best = active_scores | map(attribute='score') | max %}
+        {% set avg  = (active_scores | map(attribute='score') | sum) / active_scores|length %}
+        {% set best_correct = active_scores | map(attribute='correct_count') | max %}
         <div class="grid-3" style="grid-template-columns:repeat(3,1fr);gap:12px">
           <div style="text-align:center">
-            <div style="font-size:24px;font-weight:800;color:var(--accent)">{{ scores|length }}</div>
-            <div class="text-muted text-xs mt-1">Jami testlar</div>
+            <div style="font-size:24px;font-weight:800;color:var(--accent)">{{ active_scores|length }}</div>
+            <div class="text-muted text-xs mt-1">Testlar</div>
           </div>
           <div style="text-align:center">
             <div style="font-size:24px;font-weight:800;color:var(--success)">{{ best|round(1) }}</div>
-            <div class="text-muted text-xs mt-1">Eng yuqori</div>
+            <div class="text-muted text-xs mt-1">Eng yuqori ball</div>
           </div>
           <div style="text-align:center">
             <div style="font-size:24px;font-weight:800;color:var(--warning)">{{ avg|round(1) }}</div>
-            <div class="text-muted text-xs mt-1">O'rtacha</div>
+            <div class="text-muted text-xs mt-1">O'rtacha ball</div>
           </div>
         </div>
         {% else %}
@@ -96,10 +99,13 @@
       </div>
     </div>
 
-    <!-- Last scores -->
+    <!-- All scores including archived -->
     <div class="card">
       <div class="card-header">
-        <span class="card-title">🕐 So'nggi natijalar</span>
+        <span class="card-title">📋 Barcha natijalar</span>
+        <span class="text-muted text-xs">
+          Arxivlanganlar ham ko'rsatiladi
+        </span>
       </div>
       <div class="table-wrap">
         <table>
@@ -107,25 +113,41 @@
             <tr>
               <th>Ball</th>
               <th>To'g'ri</th>
+              <th>Yechildi</th>
               <th>Foiz</th>
+              <th>Holat</th>
               <th>Sana</th>
             </tr>
           </thead>
           <tbody>
             {% for s in scores %}
-            <tr>
-              <td><span class="badge badge-blue font-mono">{{ s.score }}</span></td>
-              <td class="text-sm">{{ s.correct_count }}/{{ s.total_questions }}</td>
+            <tr {% if s.is_archived %}style="opacity:0.55"{% endif %}>
               <td>
-                {% set pct = (s.correct_count / s.total_questions * 100) if s.total_questions else 0 %}
+                <span class="badge {{ 'badge-gray' if s.is_archived else 'badge-blue' }} font-mono">
+                  {{ s.score }}
+                </span>
+              </td>
+              <td class="text-sm">{{ s.correct_count }}/90</td>
+              <td class="text-sm text-muted">
+                {{ s.attempted_count if s.attempted_count else '—' }}/90
+              </td>
+              <td>
+                {% set pct = (s.correct_count / 90 * 100) %}
                 <span class="text-sm {% if pct >= 70 %}text-success{% elif pct >= 50 %}text-accent{% else %}text-danger{% endif %}">
                   {{ pct|round(1) }}%
                 </span>
               </td>
+              <td>
+                {% if s.is_archived %}
+                <span class="badge badge-gray text-xs">🗃 Arxiv</span>
+                {% else %}
+                <span class="badge badge-green text-xs">✅ Joriy</span>
+                {% endif %}
+              </td>
               <td class="text-muted text-xs">{{ s.created_at.strftime('%d.%m %H:%M') }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="4" class="text-muted" style="text-align:center;padding:20px">
+            <tr><td colspan="6" class="text-muted" style="text-align:center;padding:20px">
               Test yo'q
             </td></tr>
             {% endfor %}

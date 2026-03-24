@@ -1,17 +1,32 @@
 """
 utils/test_service.py
 
-TUZATILDI:
-  1. get_direction_leaderboard() — db.close() dan keyin score.user ishlatilardi
-     → DetachedInstanceError. Endi score_data dict list qaytaradi.
-  2. get_user_direction_rank() — murakkab join mantiq to'g'rilandi.
-  3. X | Y type hint → Optional[] (Python 3.8 mos)
-  4. complete_test() — har safar yangi Session, takroriy chaqiruvdan himoya
-  5. get_active_participation() — deadline_at > now filtri qo'shildi
+TUZATILDI (to'liq qayta yozildi):
+  1. Score arxiv tizimi:
+       - Foydalanuvchi bir yo'nalishda qayta test yechganda oldingi score arxivlanadi
+       - is_archived=True natijalar reyting/leaderboard da ko'rinmaydi
+       - Shaxsiy natijalar sahifasida hammasi (arxivlangan ham) ko'rinadi
+
+  2. Leaderboard duplikatlardan himoya:
+       - _rebuild_leaderboard_for_direction(): delete-then-recreate pattern
+       - Har user uchun faqat bitta (eng yaxshi) natija
+       - Uchala period (daily, weekly, all_time) alohida tozalanadi va qayta yaratiladi
+
+  3. attempted_count tracking:
+       - Test chala tashlab ketilsa ham qayd qilinadi
+       - attempted_count = javob berilgan savollar soni (skip/unanswered hisoblanmaydi)
+       - total_questions = har doim 90
+       - Foiz = correct_count / 90 * 100
+
+  4. complete_test() yaxshilandi:
+       - Takroriy chaqiruvdan himoya
+       - Snapshot tozalanadi
+       - Arxivlash oldin, keyin yangi Score
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime, timedelta, date
 from typing import Optional, List, Dict, Any, Tuple
 
 from database.db import Session
@@ -23,6 +38,11 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 import config
 import random
+
+logger = logging.getLogger(__name__)
+
+# Har doim 90 savol — o'zgarmaydi
+TOTAL_TEST_QUESTIONS = 90
 
 
 class TestService:
@@ -59,29 +79,27 @@ class TestService:
         db.close()
 
         db2 = Session()
-        result = db2.query(TestSession).filter(TestSession.id == session_id).first()
-        db2.close()
-        return result
+        try:
+            return db2.query(TestSession).filter(TestSession.id == session_id).first()
+        finally:
+            db2.close()
 
     # ─────────────────────────────────────────────────────────────
     # Participation
     # ─────────────────────────────────────────────────────────────
     @staticmethod
     def create_participation(user_id: int, direction_id: str) -> Optional[UserTestParticipation]:
-        """
-        TUZATILDI: Kunlik test cheklovi qo'shildi — har user kuniga faqat 1 marta test yechadi.
-        """
+        """Kunlik cheklov: har user kuniga faqat 1 ta test."""
         db = Session()
         try:
             today = datetime.utcnow().date()
-            # Bugun bu user test yechganmi tekshirish
             existing_today = db.query(UserTestParticipation).filter(
                 UserTestParticipation.user_id == user_id,
                 func.date(UserTestParticipation.started_at) == today,
                 UserTestParticipation.status.in_(['active', 'completed'])
             ).first()
             if existing_today:
-                return None  # Kunlik cheklov buzildi
+                return None
 
             test_session = TestService.get_or_create_test_session()
             deadline = datetime.utcnow() + timedelta(minutes=config.TEST_DURATION_MINUTES)
@@ -104,19 +122,15 @@ class TestService:
 
         db2 = Session()
         try:
-            result = db2.query(UserTestParticipation).filter(
+            return db2.query(UserTestParticipation).filter(
                 UserTestParticipation.id == p_id
             ).first()
-            return result
         finally:
             db2.close()
 
     @staticmethod
     def get_active_participation(user_id: int) -> Optional[UserTestParticipation]:
-        """
-        Faqat haqiqiy aktiv (vaqti o'tmagan) participation ni qaytaradi.
-        TUZATILDI: deadline_at > now filtri — vaqti o'tgan 'active' lar ko'rinmaydi.
-        """
+        """Faqat vaqti o'tmagan aktiv participation."""
         db = Session()
         try:
             now = datetime.utcnow()
@@ -125,14 +139,12 @@ class TestService:
                 UserTestParticipation.status == 'active',
                 UserTestParticipation.deadline_at > now
             ).order_by(UserTestParticipation.started_at.desc()).first()
-
             if p is None:
                 return None
             p_id = p.id
         finally:
             db.close()
 
-        # Yangi session bilan qaytadan olish — detached instance xatosidan saqlanish
         db2 = Session()
         try:
             return db2.query(UserTestParticipation).filter(
@@ -154,7 +166,7 @@ class TestService:
                 p.snapshot_current_index = current_index
                 p.snapshot_answers       = answers
                 db.commit()
-        except Exception as e:
+        except Exception:
             db.rollback()
         finally:
             db.close()
@@ -169,12 +181,12 @@ class TestService:
             if not p or not p.snapshot_questions:
                 return None
             return {
-                'participation_id': p.id,
-                'test_session_id':  p.test_session_id,
-                'questions':        p.snapshot_questions,
+                'participation_id':      p.id,
+                'test_session_id':       p.test_session_id,
+                'questions':             p.snapshot_questions,
                 'current_question_index': p.snapshot_current_index or 0,
-                'answers':          p.snapshot_answers or {},
-                'deadline_at':      p.deadline_at,
+                'answers':               p.snapshot_answers or {},
+                'deadline_at':           p.deadline_at,
             }
         finally:
             db.close()
@@ -257,7 +269,7 @@ class TestService:
             for q in qs:
                 q['group_label'] = grp['label']
             ordered.extend(qs)
-        return ordered[:90]
+        return ordered[:TOTAL_TEST_QUESTIONS]
 
     # ─────────────────────────────────────────────────────────────
     # Answers
@@ -295,10 +307,11 @@ class TestService:
             db.close()
 
     # ─────────────────────────────────────────────────────────────
-    # Score
+    # Score hisoblash
     # ─────────────────────────────────────────────────────────────
     @staticmethod
     def calculate_score(participation_id: int) -> float:
+        """DTM ball tizimi bo'yicha hisoblash."""
         db = Session()
         try:
             participation = db.query(UserTestParticipation).filter(
@@ -319,7 +332,9 @@ class TestService:
 
             total_score = 0.0
             for answer in answers:
-                question = db.query(Question).filter(Question.id == answer.question_id).first()
+                question = db.query(Question).filter(
+                    Question.id == answer.question_id
+                ).first()
                 if not question:
                     continue
                 if question.subject_id in config.MANDATORY_SUBJECT_IDS:
@@ -332,13 +347,24 @@ class TestService:
         finally:
             db.close()
 
+    # ─────────────────────────────────────────────────────────────
+    # Test yakunlash — ASOSIY FUNKSIYA
+    # ─────────────────────────────────────────────────────────────
     @staticmethod
     def complete_test(participation_id: int) -> Optional[Dict[str, Any]]:
         """
-        TUZATILDI:
-        - Har safar yangi Session ochadi
-        - status='completed' bo'lsa avvalgi natijani qaytaradi (takroriy chaqiruvdan himoya)
-        - Snapshot tozalanadi
+        Testni yakunlaydi. Quyidagi tartibda ishlaydi:
+          1. Participation 'completed' ga o'tkaziladi
+          2. score, correct_count, attempted_count hisoblanadi
+             - total_questions = har doim 90
+             - attempted_count = javob berilgan savollar (skip/unanswered hisoblanmaydi)
+             - Foiz = correct_count / 90 * 100
+          3. Bu user+direction uchun oldingi NON-ARCHIVED scorlar arxivlanadi
+          4. Yangi Score yaratiladi (is_archived=False)
+          5. Leaderboard qayta quriladi (faqat non-archived, per user best score)
+          6. Snapshot tozalanadi
+
+        Agar allaqachon 'completed' bo'lsa — mavjud natija qaytariladi.
         """
         db = Session()
         try:
@@ -348,73 +374,105 @@ class TestService:
             if not participation:
                 return None
 
-            # Allaqachon tugallangan — mavjud score ni qaytaramiz
+            # Allaqachon tugallangan — mavjud score qaytariladi
             if participation.status == 'completed':
                 score_obj = db.query(Score).filter(
                     Score.participation_id == participation_id
                 ).first()
                 if score_obj:
+                    pct = round(score_obj.correct_count / TOTAL_TEST_QUESTIONS * 100, 1)
                     return {
                         'score':           score_obj.score,
                         'correct_count':   score_obj.correct_count,
-                        'total_questions': score_obj.total_questions,
-                        'percentage':      round(
-                            score_obj.correct_count / score_obj.total_questions * 100
-                            if score_obj.total_questions else 0, 1
-                        ),
+                        'attempted_count': score_obj.attempted_count,
+                        'total_questions': TOTAL_TEST_QUESTIONS,
+                        'percentage':      pct,
                     }
                 return None
 
-            score_val = TestService.calculate_score(participation_id)
-
-            participation.status           = 'completed'
-            participation.completed_at     = datetime.utcnow()
+            # Participation ni yakunlaymiz
+            participation.status       = 'completed'
+            participation.completed_at = datetime.utcnow()
+            # Snapshot tozalash
             participation.snapshot_questions     = None
             participation.snapshot_current_index = 0
             participation.snapshot_answers       = None
             db.commit()
 
+            # Ball hisoblash
+            score_val = TestService.calculate_score(participation_id)
+
+            # To'g'ri javoblar
             correct_count = db.query(UserAnswer).filter(
                 UserAnswer.participation_id == participation_id,
                 UserAnswer.is_correct.is_(True)
             ).count()
 
-            total_count = db.query(UserAnswer).filter(
+            # Javob berilgan savollar (skip va unanswered hisoblanmaydi)
+            # save_answer faqat A/B/C/D da chaqiriladi, skip da emas
+            attempted_count = db.query(UserAnswer).filter(
                 UserAnswer.participation_id == participation_id
             ).count()
-            if total_count == 0:
-                total_count = 90
 
-            db.add(Score(
-                user_id=participation.user_id,
+            user_id      = participation.user_id
+            direction_id = participation.direction_id
+            ts_id        = participation.test_session_id
+
+            # Bu user+direction uchun oldingi non-archived scorlarni arxivlaymiz
+            # (yangi score yaratilishidan OLDIN)
+            old_scores = (
+                db.query(Score)
+                .join(UserTestParticipation,
+                      Score.participation_id == UserTestParticipation.id)
+                .filter(
+                    Score.user_id == user_id,
+                    UserTestParticipation.direction_id == direction_id,
+                    Score.is_archived == False,
+                    Score.participation_id != participation_id
+                )
+                .all()
+            )
+            for old_s in old_scores:
+                old_s.is_archived = True
+            db.commit()
+
+            # Yangi Score yaratish
+            new_score = Score(
+                user_id=user_id,
                 participation_id=participation_id,
                 score=score_val,
                 correct_count=correct_count,
-                total_questions=total_count
-            ))
-
-            # Direction-based leaderboard yaratish
-            direction_id = participation.direction_id
-            TestService._update_direction_leaderboard(participation.test_session_id, direction_id, score_val, participation.user_id)
-
+                attempted_count=attempted_count,
+                total_questions=TOTAL_TEST_QUESTIONS,
+                is_archived=False,
+            )
+            db.add(new_score)
             db.commit()
 
-            return {
-                'score':           score_val,
-                'correct_count':   correct_count,
-                'total_questions': total_count,
-                'percentage':      round(
-                    (correct_count / total_count * 100) if total_count > 0 else 0, 1
-                ),
-            }
         except Exception as e:
             db.rollback()
+            logger.error("complete_test xato (participation_id=%d): %s", participation_id, e)
             return None
         finally:
             db.close()
 
+        # Leaderboard qayta quriladi (alohida session)
+        try:
+            TestService._rebuild_leaderboard_for_direction(ts_id, direction_id)
+        except Exception as e:
+            logger.error("Leaderboard rebuild xato: %s", e)
+
+        pct = round(correct_count / TOTAL_TEST_QUESTIONS * 100, 1)
+        return {
+            'score':           score_val,
+            'correct_count':   correct_count,
+            'attempted_count': attempted_count,
+            'total_questions': TOTAL_TEST_QUESTIONS,
+            'percentage':      pct,
+        }
+
     # ─────────────────────────────────────────────────────────────
-    # Auto-finish (scheduler tomonidan chaqiriladi)
+    # Auto-finish (scheduler)
     # ─────────────────────────────────────────────────────────────
     @staticmethod
     def get_expired_participations() -> List[Tuple[int, int]]:
@@ -430,146 +488,118 @@ class TestService:
         finally:
             db.close()
 
+    # ─────────────────────────────────────────────────────────────
+    # Leaderboard — DELETE + RECREATE (duplikatlardan himoya)
+    # ─────────────────────────────────────────────────────────────
     @staticmethod
-    def _update_direction_leaderboard(test_session_id: int, direction_id: str, score_val: float, user_id: int):
+    def _rebuild_leaderboard_for_direction(test_session_id: int, direction_id: str) -> None:
         """
-        Direction-based leaderboard yangilash: daily, weekly, all_time
+        Berilgan direction uchun barcha periodlar bo'yicha leaderboard ni
+        to'liq qayta quradi.
+
+        Algoritm:
+          1. O'sha direction+period+vaqt oynasidagi barcha Leaderboard yozuvlarini o'chir
+          2. Faqat non-archived scorlardan, har user uchun ENG YUQORI ball ni ol
+          3. Rank bo'yicha tartiblab qayta yoz
+
+        Bu DELETE+INSERT yondashuvi duplikatlarni mutlaqo yo'q qiladi.
         """
         db = Session()
         try:
-            today = datetime.utcnow().date()
-            week_start = today - timedelta(days=today.weekday())  # Monday
+            now        = datetime.utcnow()
+            today      = now.date()
+            week_start = datetime.combine(today - timedelta(days=today.weekday()), datetime.min.time())
 
-            # Daily leaderboard
-            daily_scores = (
-                db.query(Score)
-                .join(UserTestParticipation, Score.participation_id == UserTestParticipation.id)
-                .join(User, Score.user_id == User.id)
-                .filter(
-                    User.direction_id == direction_id,
-                    func.date(UserTestParticipation.completed_at) == today,
-                    UserTestParticipation.status == 'completed'
+            for period in ('daily', 'weekly', 'all_time'):
+                # ── Mavjud yozuvlarni o'chirish ──────────────────────────────
+                del_q = db.query(Leaderboard).filter(
+                    Leaderboard.direction_id == direction_id,
+                    Leaderboard.period == period
                 )
-                .order_by(Score.score.desc())
-                .all()
-            )
-            for rank, s in enumerate(daily_scores, 1):
-                lb = db.query(Leaderboard).filter(
-                    Leaderboard.user_id == s.user_id,
-                    Leaderboard.direction_id == direction_id,
-                    Leaderboard.period == 'daily',
-                    func.date(Leaderboard.timestamp) == today
-                ).first()
-                if not lb:
-                    lb = Leaderboard(
-                        test_session_id=test_session_id,
-                        user_id=s.user_id,
-                        direction_id=direction_id,
-                        period='daily',
-                        total_score=s.score,
-                        timestamp=datetime.utcnow()
-                    )
-                    db.add(lb)
-                lb.rank = rank
-                lb.total_score = s.score
+                if period == 'daily':
+                    del_q = del_q.filter(func.date(Leaderboard.timestamp) == today)
+                elif period == 'weekly':
+                    del_q = del_q.filter(Leaderboard.timestamp >= week_start)
+                # all_time — hamma yozuvlar o'chiriladi
 
-            # Weekly leaderboard
-            weekly_scores = (
-                db.query(Score)
-                .join(UserTestParticipation, Score.participation_id == UserTestParticipation.id)
-                .join(User, Score.user_id == User.id)
-                .filter(
-                    User.direction_id == direction_id,
-                    func.date(UserTestParticipation.completed_at) >= week_start,
-                    UserTestParticipation.status == 'completed'
+                del_q.delete(synchronize_session=False)
+                db.flush()
+
+                # ── Har user uchun eng yaxshi non-archived score ─────────────
+                best_q = (
+                    db.query(Score.user_id, func.max(Score.score).label('best'))
+                    .join(UserTestParticipation,
+                          Score.participation_id == UserTestParticipation.id)
+                    .join(User, Score.user_id == User.id)
+                    .filter(
+                        UserTestParticipation.direction_id == direction_id,
+                        Score.is_archived == False,
+                    )
                 )
-                .order_by(Score.score.desc())
-                .all()
-            )
-            for rank, s in enumerate(weekly_scores, 1):
-                lb = db.query(Leaderboard).filter(
-                    Leaderboard.user_id == s.user_id,
-                    Leaderboard.direction_id == direction_id,
-                    Leaderboard.period == 'weekly',
-                    func.date(Leaderboard.timestamp) >= week_start
-                ).first()
-                if not lb:
-                    lb = Leaderboard(
-                        test_session_id=test_session_id,
-                        user_id=s.user_id,
-                        direction_id=direction_id,
-                        period='weekly',
-                        total_score=s.score,
-                        timestamp=datetime.utcnow()
+                if period == 'daily':
+                    best_q = best_q.filter(
+                        func.date(UserTestParticipation.completed_at) == today
                     )
-                    db.add(lb)
-                lb.rank = rank
-                lb.total_score = s.score
+                elif period == 'weekly':
+                    best_q = best_q.filter(
+                        UserTestParticipation.completed_at >= week_start
+                    )
 
-            # All-time leaderboard
-            all_time_scores = (
-                db.query(Score)
-                .join(User, Score.user_id == User.id)
-                .filter(User.direction_id == direction_id)
-                .order_by(Score.score.desc())
-                .all()
-            )
-            for rank, s in enumerate(all_time_scores, 1):
-                lb = db.query(Leaderboard).filter(
-                    Leaderboard.user_id == s.user_id,
-                    Leaderboard.direction_id == direction_id,
-                    Leaderboard.period == 'all_time'
-                ).first()
-                if not lb:
-                    lb = Leaderboard(
+                user_bests = (
+                    best_q
+                    .group_by(Score.user_id)
+                    .order_by(func.max(Score.score).desc())
+                    .all()
+                )
+
+                # ── Yangi Leaderboard yozuvlari ──────────────────────────────
+                for rank, (uid, best_score) in enumerate(user_bests, 1):
+                    db.add(Leaderboard(
                         test_session_id=test_session_id,
-                        user_id=s.user_id,
+                        user_id=uid,
                         direction_id=direction_id,
-                        period='all_time',
-                        total_score=s.score,
-                        timestamp=datetime.utcnow()
-                    )
-                    db.add(lb)
-                lb.rank = rank
-                lb.total_score = s.score
+                        rank=rank,
+                        total_score=best_score,
+                        period=period,
+                        timestamp=now,
+                    ))
 
             db.commit()
+            logger.debug(
+                "Leaderboard rebuilt: direction=%s, periods=3", direction_id
+            )
         except Exception as e:
             db.rollback()
-            print(f"Leaderboard update error: {e}")
+            logger.error("_rebuild_leaderboard_for_direction xato: %s", e)
         finally:
             db.close()
 
     # ─────────────────────────────────────────────────────────────
-    # Leaderboard
+    # Leaderboard so'rovlari
     # ─────────────────────────────────────────────────────────────
     @staticmethod
-    def get_leaderboard(test_session_id: int, limit: int = 10) -> list:
-        db = Session()
-        try:
-            return db.query(Leaderboard).filter(
-                Leaderboard.test_session_id == test_session_id
-            ).order_by(Leaderboard.total_score.desc()).limit(limit).all()
-        finally:
-            db.close()
-
-    @staticmethod
-    def get_direction_leaderboard(direction_id: str, period: str = 'daily', limit: int = 10) -> List[Dict[str, Any]]:
+    def get_direction_leaderboard(
+        direction_id: str,
+        period: str = 'all_time',
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
         """
-        Direction va period bo'yicha leaderboard.
-        period: 'daily', 'weekly', 'all_time'
+        Direction + period bo'yicha reyting.
+        Faqat non-archived scorlar (arxivlanganlar ko'rinmaydi).
         """
         db = Session()
         try:
-            today = datetime.utcnow().date()
-            week_start = today - timedelta(days=today.weekday())
+            today      = datetime.utcnow().date()
+            week_start = datetime.combine(
+                today - timedelta(days=today.weekday()), datetime.min.time()
+            )
 
             query = (
                 db.query(Leaderboard)
                 .join(User, Leaderboard.user_id == User.id)
                 .filter(
                     Leaderboard.direction_id == direction_id,
-                    Leaderboard.period == period
+                    Leaderboard.period == period,
                 )
                 .options(joinedload(Leaderboard.user))
             )
@@ -579,10 +609,10 @@ class TestService:
             elif period == 'weekly':
                 query = query.filter(Leaderboard.timestamp >= week_start)
 
-            scores = query.order_by(Leaderboard.rank).limit(limit).all()
+            entries = query.order_by(Leaderboard.rank).limit(limit).all()
 
             result = []
-            for lb in scores:
+            for lb in entries:
                 u = lb.user
                 result.append({
                     'rank':       lb.rank,
@@ -598,30 +628,104 @@ class TestService:
     @staticmethod
     def get_user_direction_rank(user_id: int, direction_id: str) -> int:
         """
-        TUZATILDI: murakkab join → oddiy subquery bilan.
         Foydalanuvchining yo'nalish ichidagi o'rni.
+        Faqat non-archived scorlar hisobga olinadi.
         """
         db = Session()
         try:
-            # Foydalanuvchining eng yuqori balli
+            # Foydalanuvchining eng yuqori non-archived bali
             user_best = (
                 db.query(func.max(Score.score))
-                .filter(Score.user_id == user_id)
+                .join(UserTestParticipation,
+                      Score.participation_id == UserTestParticipation.id)
+                .filter(
+                    Score.user_id == user_id,
+                    UserTestParticipation.direction_id == direction_id,
+                    Score.is_archived == False,
+                )
                 .scalar()
-            ) or 0
+            ) or 0.0
 
-            # Shu yo'nalishda undan yuqori ball olganlar soni
+            # Undan yuqori ball olgan boshqa userlar soni
             better_count = (
                 db.query(func.count(Score.user_id.distinct()))
+                .join(UserTestParticipation,
+                      Score.participation_id == UserTestParticipation.id)
                 .join(User, Score.user_id == User.id)
                 .filter(
                     User.direction_id == direction_id,
+                    UserTestParticipation.direction_id == direction_id,
+                    Score.is_archived == False,
                     Score.score > user_best,
-                    Score.user_id != user_id
+                    Score.user_id != user_id,
                 )
                 .scalar()
             ) or 0
 
             return better_count + 1
+        finally:
+            db.close()
+
+    @staticmethod
+    def get_leaderboard(test_session_id: int, limit: int = 10) -> list:
+        db = Session()
+        try:
+            return (
+                db.query(Leaderboard)
+                .filter(Leaderboard.test_session_id == test_session_id)
+                .order_by(Leaderboard.total_score.desc())
+                .limit(limit)
+                .all()
+            )
+        finally:
+            db.close()
+
+    # ─────────────────────────────────────────────────────────────
+    # Shaxsiy natijalar (arxivlangan ham ko'rinadi)
+    # ─────────────────────────────────────────────────────────────
+    @staticmethod
+    def get_user_scores(
+        user_id: int,
+        include_archived: bool = False,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Foydalanuvchining natijalarini qaytaradi.
+        include_archived=True: arxivlangan natijalar ham ko'rinadi (shaxsiy natijalar uchun)
+        include_archived=False: faqat hozirgi (reyting uchun)
+        """
+        db = Session()
+        try:
+            query = (
+                db.query(Score)
+                .join(UserTestParticipation,
+                      Score.participation_id == UserTestParticipation.id)
+                .filter(Score.user_id == user_id)
+            )
+            if not include_archived:
+                query = query.filter(Score.is_archived == False)
+
+            scores = (
+                query
+                .order_by(Score.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+
+            result = []
+            for s in scores:
+                pct = round(s.correct_count / TOTAL_TEST_QUESTIONS * 100, 1)
+                participation = s.participation
+                result.append({
+                    'score':           s.score,
+                    'correct_count':   s.correct_count,
+                    'attempted_count': s.attempted_count,
+                    'total_questions': TOTAL_TEST_QUESTIONS,
+                    'percentage':      pct,
+                    'is_archived':     s.is_archived,
+                    'created_at':      s.created_at,
+                    'direction_id':    participation.direction_id if participation else None,
+                })
+            return result
         finally:
             db.close()
