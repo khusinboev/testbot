@@ -50,10 +50,43 @@ def drop_tables():
 
 def init_db():
     create_tables()
-    seed_default_admin()
+    seed_admin()
     seed_subjects()
     seed_regions_and_districts()
+    seed_directions()
+    seed_referral_settings()
+
+
+def seed_admin():
+    """seed_default_admin() ning yangi nomi."""
+    seed_default_admin()
+
+
+def seed_directions():
+    """seed_directions_from_excel() ning yangi nomi."""
     seed_directions_from_excel()
+
+
+def seed_referral_settings():
+    """Referral settings (id=1) yo'q bo'lsa yaratadi."""
+    from .models import ReferralSettings
+    db = Session()
+    try:
+        if db.query(ReferralSettings).filter(ReferralSettings.id == 1).first():
+            return
+        db.add(ReferralSettings(
+            id=1,
+            is_enabled=False,
+            required_count=0,
+            reward_message="🎉 Tabriklaymiz! Referal talabi bajarildi!"
+        ))
+        db.commit()
+        print("✅ Referral settings yaratildi")
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Referral settings xato: {e}")
+    finally:
+        db.close()
 
 
 def seed_default_admin():

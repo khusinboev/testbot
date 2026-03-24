@@ -25,8 +25,16 @@ logger = logging.getLogger(__name__)
 
 # ─── Sozlamalar ──────────────────────────────────────────────────────────────
 
-def get_referral_settings() -> ReferralSettings:
-    """Sozlamalarni oladi, yo'q bo'lsa yaratadi."""
+class _ReferralSettingsDTO:
+    """Session yopilgandan keyin xavfsiz ishlatish uchun oddiy DTO."""
+    def __init__(self, is_enabled, required_count, reward_message):
+        self.is_enabled     = is_enabled
+        self.required_count = required_count
+        self.reward_message = reward_message
+
+
+def get_referral_settings() -> _ReferralSettingsDTO:
+    """Sozlamalarni oladi, yo'q bo'lsa yaratadi. DTO qaytaradi (session mustaqil)."""
     db = Session()
     try:
         settings = db.query(ReferralSettings).filter(ReferralSettings.id == 1).first()
@@ -39,10 +47,13 @@ def get_referral_settings() -> ReferralSettings:
             )
             db.add(settings)
             db.commit()
-        return settings
+        return _ReferralSettingsDTO(
+            is_enabled=settings.is_enabled,
+            required_count=settings.required_count,
+            reward_message=settings.reward_message,
+        )
     finally:
         db.close()
-
 
 def update_referral_settings(
     is_enabled: Optional[bool] = None,
@@ -78,33 +89,32 @@ def _generate_code() -> str:
     return 'ref_' + ''.join(secrets.choice(alphabet) for _ in range(8))
 
 
-def get_or_create_referral_link(user_id: int) -> ReferralLink:
-    """User uchun referal linkni oladi yoki yaratadi."""
+def get_or_create_referral_link(user_id: int) -> Optional[object]:
+    """User uchun referal linkni oladi yoki yaratadi. DTO qaytaradi."""
     db = Session()
     try:
         link = db.query(ReferralLink).filter(ReferralLink.user_id == user_id).first()
-        if link:
-            return link
+        if not link:
+            for _ in range(10):
+                code = _generate_code()
+                if not db.query(ReferralLink).filter(ReferralLink.code == code).first():
+                    break
+            link = ReferralLink(user_id=user_id, code=code, invited_count=0)
+            db.add(link)
+            db.commit()
+            db.refresh(link)
 
-        # Unikal kod yaratish
-        for _ in range(10):
-            code = _generate_code()
-            exists = db.query(ReferralLink).filter(ReferralLink.code == code).first()
-            if not exists:
-                break
-
-        link = ReferralLink(user_id=user_id, code=code, invited_count=0)
-        db.add(link)
-        db.commit()
-        link_id = link.id
+        # Session yopilishidan oldin kerakli ma'lumotlarni DTO ga ko'chiramiz
+        class _LinkDTO:
+            pass
+        dto = _LinkDTO()
+        dto.id            = link.id
+        dto.code          = link.code
+        dto.invited_count = link.invited_count or 0
+        dto.user_id       = link.user_id
+        return dto
     finally:
         db.close()
-
-    db2 = Session()
-    try:
-        return db2.query(ReferralLink).filter(ReferralLink.id == link_id).first()
-    finally:
-        db2.close()
 
 
 def get_referral_link_by_code(code: str) -> Optional[ReferralLink]:
