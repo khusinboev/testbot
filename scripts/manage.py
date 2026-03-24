@@ -121,7 +121,7 @@ def cmd_check():
             ok = False
 
     # Excel
-    ep = os.path.join(ROOT, "data", "Fanlar_majmuasi_2025-2026.xlsx")
+    ep = os.path.join(ROOT, "utils", "Fanlar_majmuasi_2025-2026.xlsx")
     if os.path.exists(ep):
         print(f"  ✅ Excel fayl — {os.path.getsize(ep)//1024} KB")
     else:
