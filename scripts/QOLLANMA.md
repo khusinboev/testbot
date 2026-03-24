@@ -51,6 +51,22 @@ test-bot/
 
 ---
 
+## bazalarni o'chirib qaytadan tiklash to'ldirish uchun
+
+```bash
+# 1. Bazani to'liq o'chirib qayta yaratish
+python scripts/manage.py reset
+# "yes" deb tasdiqlang
+
+# 2. Savollarni qo'shish (300 ta namuna)
+python scripts/manage.py seed
+
+# 3. Holat tekshirish
+python scripts/manage.py status
+```
+
+---
+
 ## 🚀 Yangi loyiha — boshlash (birinchi marta)
 
 ### 1. Repozitoriyni klonlash / ko'chirish
