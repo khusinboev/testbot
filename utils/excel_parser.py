@@ -24,7 +24,7 @@ except ImportError:
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 EXCEL_FILES = [
-    os.path.join(ROOT_DIR, "Fanlar_majmuasi_2025-2026.xlsx"),
+    os.path.join(ROOT_DIR, "utils", "Fanlar_majmuasi_2025-2026.xlsx"),
 ]
 
 SUBJECT_MAP = {
