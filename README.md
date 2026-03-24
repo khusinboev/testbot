@@ -1,179 +1,115 @@
-# DTM Preparation Telegram Bot
+# DTM Test Bot
 
-A comprehensive Telegram bot for high school students to prepare for Uzbekistan's DTM (entrance exam) with timed practice tests, ranking system, and admin management.
+DTM (O'zbekiston davlat test imtihoni) tayyorgarlik uchun Telegram boti.
 
-## Features
+## Loyiha tuzilmasi
 
-- **User Registration**: Name, phone, region/district selection
-- **Timed Practice Tests**: 180-minute sessions with 90 questions (30 mandatory + 60 specialized)
-- **Scoring System**: DTM-compliant scoring (mandatory 1.1pts, specialized 3.1/2.1pts)
-- **Ranking**: Real-time leaderboard after test completion
-- **Admin Panel**: Web dashboard for test management, user monitoring, analytics
-- **Multi-language**: Uzbek (Cyrillic/Latin), Russian support
+```
+test-bot/
+├── bot/                    # Telegram bot
+│   ├── handlers/
+│   │   ├── registration.py # Asosiy handlerlar (ro'yxat, test, reyting)
+│   │   ├── inline.py       # Inline qidiruv
+│   │   ├── start.py        # /help va boshqa buyruqlar
+│   │   └── test.py         # (stub fayl)
+│   ├── keyboards.py
+│   ├── main.py
+│   └── states.py
+│
+├── admin/                  # Web admin panel (Flask)
+│   ├── app.py
+│   ├── routes_extra.py     # Kanallar va broadcast
+│   └── templates/
+│
+├── database/               # Baza modellari va ulanish
+│   ├── models.py
+│   ├── db.py
+│   ├── regions.json        # Viloyatlar ma'lumotlari
+│   └── districts.json      # Tumanlar ma'lumotlari
+│
+├── utils/                  # Yordamchi modullar
+│   ├── channel_service.py  # Kanal obuna tekshiruvi
+│   ├── excel_parser.py     # Excel yo'nalishlar parser
+│   ├── locks.py            # User lock/throttle
+│   ├── scheduler.py        # APScheduler (avtomatik yakunlash)
+│   └── test_service.py     # Test logikasi (asosiy)
+│
+├── scripts/
+│   └── manage.py           # BARCHA baza amallari bitta joyda
+│
+├── data/
+│   └── Fanlar_majmuasi_2025-2026.xlsx  ← Excel faylni shu yerga qo'ying
+│
+├── config.py
+├── .env
+└── requirements.txt
+```
 
-## Tech Stack
+## O'rnatish
 
-- **Backend**: Python 3.8+
-- **Bot Framework**: Aiogram 3.x
-- **Database**: PostgreSQL + SQLAlchemy
-- **Web Admin**: Flask + Bootstrap
-- **Scheduling**: APScheduler
-- **Data Processing**: Pandas, OpenPyXL
-
-## Setup
-
-### 1. Clone and Install Dependencies
+### 1. Muhit sozlash
 
 ```bash
-cd d:\own\projects\python\test-bot
 pip install -r requirements.txt
-```
-
-### 2. Database Setup
-
-Create PostgreSQL database and update `.env`:
-
-```bash
 cp .env.example .env
-# Edit .env with your database credentials
+# .env faylida BOT_TOKEN va DATABASE_URL ni to'ldiring
 ```
 
-Initialize database:
+### 2. Baza yaratish
 
 ```bash
-python init_db.py
+# Yangi baza (barcha jadvallar + asosiy ma'lumotlar)
+python scripts/manage.py init
+
+# Savollarni qo'shish (init dan keyin)
+python scripts/manage.py seed
+
+# Holat tekshirish
+python scripts/manage.py status
 ```
 
-### 3. Bot Configuration
+### 3. Excel yo'nalishlar fayli
 
-1. Create Telegram bot via [@BotFather](https://t.me/botfather)
-2. Add bot token to `.env`
-3. Add admin Telegram IDs to `.env`
+`data/` papkasiga quyidagi faylni qo'ying:
+```
+data/Fanlar_majmuasi_2025-2026.xlsx
+```
 
-### 4. Run the Application
+Fayl bo'lmasa 5 ta namuna yo'nalish bilan ishlaydi.
+
+### 4. Ishga tushirish
 
 **Bot:**
 ```bash
 python -m bot.main
 ```
 
-**Admin Panel:**
+**Admin panel:**
 ```bash
 python -m admin.app
+# http://localhost:5000
 ```
 
-Visit `http://localhost:5000` for admin dashboard.
+## Mavjud baza migration
 
-## Project Structure
-
-```
-├── bot/                    # Telegram bot
-│   ├── main.py            # Bot entry point
-│   └── handlers/          # Bot command handlers
-├── admin/                 # Web admin panel
-│   ├── app.py            # Flask application
-│   └── templates/        # HTML templates
-├── database/             # Database models and setup
-│   ├── models.py         # SQLAlchemy models
-│   └── db.py            # Database connection & seeding
-├── utils/                # Utility functions
-│   ├── pdf_parser.py     # Parse directions from PDF
-│   └── scoring.py       # Score calculation logic
-├── tests/                # Unit tests
-├── regions.json         # Region data
-├── districts.json       # District data
-├── Fanlar_majmuasi_2025-2026.pdf  # Directions PDF
-└── requirements.txt     # Python dependencies
-```
-
-## Database Schema
-
-### Core Tables
-- `users` - Student registrations
-- `regions`/`districts` - Geographic data
-- `directions` - Test directions (subject combinations)
-- `subjects` - Available subjects
-- `questions` - Test questions
-- `test_sessions` - Scheduled exams
-- `user_answers` - Student responses
-- `leaderboard` - Final rankings
-
-## Development Phases
-
-### Phase 1: Database & Setup ✓
-- Database schema design
-- Seed data (regions, districts, directions)
-- Basic project structure
-
-### Phase 2: User Registration & Bot Basics
-- Registration flow (FSM)
-- Main menu navigation
-- Channel subscription checks
-
-### Phase 3: Test Taking & Questions
-- Test session management
-- Question display & navigation
-- Auto-submit functionality
-
-### Phase 4: Scoring & Ranking
-- Score calculation
-- Leaderboard generation
-- Results display
-
-### Phase 5: Admin Web Dashboard
-- User management
-- Test creation
-- Excel import functionality
-
-### Phase 6: Polish & Features
-- Admin Telegram commands
-- Performance optimization
-- Comprehensive testing
-
-## API Endpoints
-
-### Admin Web API
-- `GET /` - Dashboard
-- `GET /users` - User management
-- `GET /tests` - Test management
-- `POST /api/tests` - Create test session
-- `POST /api/questions/import` - Import questions from Excel
-
-## Testing
-
-Run tests:
+Eski bazani saqlab yangi ustunlar qo'shish uchun:
 ```bash
-python -m pytest tests/
+python scripts/manage.py migrate
 ```
 
-## Deployment
+## manage.py buyruqlari
 
-### Production Setup
-1. Use production PostgreSQL instance
-2. Set `FLASK_ENV=production` in `.env`
-3. Use proper secret keys
-4. Set up reverse proxy (nginx)
-5. Configure SSL certificates
-6. Set up monitoring/logging
+| Buyruq    | Ta'rif                                        |
+|-----------|-----------------------------------------------|
+| `init`    | Jadvallar yaratish + asosiy ma'lumotlar       |
+| `reset`   | Bazani o'chirib qayta yaratish (EHTIYOT!)     |
+| `seed`    | Savollarni qo'shish (`--force` bilan qayta)  |
+| `migrate` | Mavjud bazaga yangi ustunlar qo'shish         |
+| `status`  | Baza holatini ko'rish                         |
 
-### Docker (Optional)
-```dockerfile
-FROM python:3.9-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-COPY . .
-CMD ["python", "-m", "bot.main"]
-```
+## Texnologiyalar
 
-## Contributing
-
-1. Fork the repository
-2. Create feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit pull request
-
-## License
-
-This project is licensed under the MIT License.
+- Python 3.8+, Aiogram 3.x, SQLAlchemy, PostgreSQL
+- Flask + Flask-Login (admin panel)
+- APScheduler (vaqt tugagan testlarni avtomatik yakunlash)
+- Redis (ixtiyoriy, FSM storage uchun)

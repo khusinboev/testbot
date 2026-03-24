@@ -1,8 +1,10 @@
 """
-Excel parser for DTM directions.
-Reads from: Fanlar_majmuasi_2025-2026.xlsx
-"""
+utils/excel_parser.py — Fanlar majmuasi Excel faylini o'qish
 
+Fayl qidiriladigan joylar (tartib bo'yicha):
+  1. data/Fanlar_majmuasi_2025-2026.xlsx  ← tavsiya etilgan joy
+  2. Fanlar_majmuasi_2025-2026.xlsx        ← loyiha ildizida
+"""
 import os
 import re
 from typing import List, Dict
@@ -10,10 +12,14 @@ from typing import List, Dict
 try:
     import openpyxl
 except ImportError:
-    raise ImportError("openpyxl o'rnatilmagan. `pip install openpyxl` qiling.")
+    raise ImportError("openpyxl o'rnatilmagan. pip install openpyxl")
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EXCEL_FILES = [os.path.join(BASE_DIR, "../Fanlar_majmuasi_2025-2026.xlsx")]
+# Loyiha ildizi (utils/ ning parenti)
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+EXCEL_FILES = [
+    os.path.join(ROOT_DIR, "Fanlar_majmuasi_2025-2026.xlsx"),
+]
 
 SUBJECT_MAP = {
     "matematika": 1,
@@ -55,18 +61,15 @@ def get_subject_id(name: str) -> int:
     for key, sid in SUBJECT_MAP.items():
         if key in clean:
             return sid
-    print(f"  [WARN] Noma'lum fan: '{name}' — Matematika (1) deb qabul qilindi")
+    print(f"  [WARN] Noma'lum fan: '{name}' — Matematika (1) deb olindi")
     return 1
 
 
 def _clean(val) -> str:
-    if val is None:
-        return ""
-    return str(val).strip()
+    return str(val).strip() if val is not None else ""
 
 
 def _safe_get(row, index) -> str:
-    """IndexError bo'lmasdan row dan qiymat oladi."""
     if index is None or index < 0 or index >= len(row):
         return ""
     return _clean(row[index])
@@ -110,11 +113,10 @@ def _parse_sheet(ws) -> List[Dict]:
         col_map = _detect_columns(headers)
         if len(col_map) >= 3:
             header_row_idx = idx
-            print(f"  Sarlavha qatori: {idx + 1} | Kolonkalar: {col_map}")
+            print(f"  Sarlavha qatori: {idx + 1} | {col_map}")
             break
 
     if header_row_idx is None:
-        print("  [WARN] Sarlavha aniqlanmadi — taxminiy mapping ishlatiladi")
         col_map = _guess_columns(rows)
         header_row_idx = 0
         if not col_map:
@@ -132,19 +134,15 @@ def _parse_sheet(ws) -> List[Dict]:
         subj1 = _safe_get(row, col_map.get("subject1"))
         subj2 = _safe_get(row, col_map.get("subject2"))
 
-        if not re.match(r'^\d{6,9}$', code):
-            continue
-        if not name:
-            continue
-        if code in seen_codes:
+        if not re.match(r'^\d{6,9}$', code) or not name or code in seen_codes:
             continue
         seen_codes.add(code)
 
         directions.append({
-            "code": code,
-            "name": name,
-            "subject1": subj1,
-            "subject2": subj2,
+            "code":       code,
+            "name":       name,
+            "subject1":   subj1,
+            "subject2":   subj2,
             "subject1_id": get_subject_id(subj1),
             "subject2_id": get_subject_id(subj2),
         })
@@ -155,46 +153,40 @@ def _parse_sheet(ws) -> List[Dict]:
 def parse_directions_from_excel() -> List[Dict]:
     for filepath in EXCEL_FILES:
         if not os.path.exists(filepath):
-            print(f"  [SKIP] Fayl topilmadi: {os.path.basename(filepath)}")
             continue
 
-        print(f"\n📂 O'qilmoqda: {os.path.basename(filepath)}")
+        print(f"\n📂 O'qilmoqda: {os.path.relpath(filepath, ROOT_DIR)}")
         try:
             wb = openpyxl.load_workbook(filepath, read_only=True, data_only=True)
             all_directions = []
             for sheet_name in wb.sheetnames:
                 ws = wb[sheet_name]
-                print(f"  Sheet: '{sheet_name}'")
                 dirs = _parse_sheet(ws)
-                print(f"  → {len(dirs)} ta yo'nalish topildi")
+                print(f"  Sheet '{sheet_name}': {len(dirs)} ta yo'nalish")
                 all_directions.extend(dirs)
             wb.close()
 
             if all_directions:
                 seen = set()
-                unique = [d for d in all_directions if d["code"] not in seen and not seen.add(d["code"])]
-                print(f"  ✅ Jami unikal yo'nalish: {len(unique)}")
+                unique = [d for d in all_directions
+                          if d["code"] not in seen and not seen.add(d["code"])]
+                print(f"  ✅ Jami: {len(unique)} ta unikal yo'nalish")
                 return unique
-
         except Exception as e:
-            print(f"  [ERROR] {os.path.basename(filepath)}: {e}")
+            print(f"  [ERROR] {e}")
             continue
 
-    print("[ERROR] Excel fayl o'qilmadi — fallback ishlatilmoqda")
+    print(f"\n⚠️  Excel fayl topilmadi!")
+    print(f"   Fayl joyi: data/Fanlar_majmuasi_2025-2026.xlsx")
+    print(f"   Fallback 5 ta yo'nalish ishlatiladi.\n")
     return _fallback_directions()
 
 
 def _fallback_directions() -> List[Dict]:
-    """Production da bu ishlatilmasligi kerak."""
     return [
-        {"code": "60610400", "name": "Dasturiy injiniring",
-         "subject1": "Matematika", "subject2": "Fizika", "subject1_id": 1, "subject2_id": 2},
-        {"code": "60610500", "name": "Sun'iy intellekt",
-         "subject1": "Matematika", "subject2": "Fizika", "subject1_id": 1, "subject2_id": 2},
-        {"code": "60540100", "name": "Matematika",
-         "subject1": "Matematika", "subject2": "Fizika", "subject1_id": 1, "subject2_id": 2},
-        {"code": "60110100", "name": "Pedagogika",
-         "subject1": "Tarix", "subject2": "Ona tili va adabiyoti", "subject1_id": 5, "subject2_id": 6},
-        {"code": "60420100", "name": "Yurisprudensiya",
-         "subject1": "Huquqshunoslik fanlari", "subject2": "Chet tili", "subject1_id": 5, "subject2_id": 9},
+        {"code": "60610400", "name": "Dasturiy injiniring",    "subject1": "Matematika", "subject2": "Fizika",   "subject1_id": 1, "subject2_id": 2},
+        {"code": "60610500", "name": "Sun'iy intellekt",        "subject1": "Matematika", "subject2": "Fizika",   "subject1_id": 1, "subject2_id": 2},
+        {"code": "60540100", "name": "Matematika",              "subject1": "Matematika", "subject2": "Fizika",   "subject1_id": 1, "subject2_id": 2},
+        {"code": "60110100", "name": "Pedagogika",              "subject1": "Tarix",      "subject2": "Ona tili", "subject1_id": 5, "subject2_id": 6},
+        {"code": "60420100", "name": "Yurisprudensiya",         "subject1": "Tarix",      "subject2": "Chet tili","subject1_id": 5, "subject2_id": 9},
     ]
