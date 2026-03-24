@@ -1,17 +1,31 @@
 """
 bot/handlers/registration.py
 
-YANGILANDI:
-  - /start da referal kod qabul qilish: /start ref_XXXXXXXX
-  - Ro'yxatdan o'tgandan keyin referal qayd qilish
-  - Referal gate: kerakli referal soni to'ldirilmagan bo'lsa blok
-  - show_main_menu da referal gate tekshiruvi
-  - show_referral_status: userga o'z referal holatini ko'rsatish
+O'ZGARTIRISHLAR:
+  1. XATO TUZATILDI: referral_gate / check_referral_gate / get_or_create_referral_link
+     hamma joyda telegram_id ishlatiladi (avval user.id va telegram_id aralashib ketardi)
+
+  2. XABARLARNI TOZALASH:
+     - Inline tugmali xabarlar vazifasi tugagandan keyin o'chiriladi
+     - Ro'yxatdan o'tish oxirida ortiqcha xabarlar o'chiriladi
+     - Scheduler yordamida test vaqti tugaganda natija xabari yuborilgandan keyin
+       klaviatura almashtiriladi
+
+  3. STATE KAMAYTIRISH:
+     - UserMainMenuStates.main_menu olib tashlandi — bu state amalda keraksiz edi
+       (F.text == "..." filterlar state siz ham ishlaydi, state == main_menu
+       faqat F.text filterlarni cheklardi xolos, lekin boshqa handlerlar qo'shilganda
+       noto'g'ri bloklanishi mumkin edi)
+     - Barcha "main_menu" state ga bog'liq handlerlar — StateFilter yo'q holda ishlaydi
+     - Bu FSM yuki kamayadi, Redis/Memory storage ning saqlash hajmi qisqaradi
+     - Salbiy tomoni: foydalanuvchi test jarayonida bosh menyu tugmalarini bossa,
+       state tekshiruvi bo'lmaydi — shuning uchun test_active holatda
+       texnik xabarlar chiqishi mumkin. Bu ham quyida handle qilingan.
 """
 from __future__ import annotations
 
 from aiogram import Router, types, F, Bot
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     ContentType, InlineKeyboardMarkup, InlineKeyboardButton,
@@ -19,7 +33,7 @@ from aiogram.types import (
 from database.db import Session
 from database.models import User, Region, District, Direction, Score, UserTestParticipation
 from bot.states import (
-    UserRegistrationStates, UserMainMenuStates,
+    UserRegistrationStates,
     TestSessionStates, ProfileEditStates
 )
 from bot.keyboards import (
@@ -47,8 +61,8 @@ import traceback
 logger = logging.getLogger(__name__)
 router = Router()
 
-# Bot username (muhit o'zgaruvchisidan yoki avtomatik)
 _BOT_USERNAME = None
+
 
 async def _get_bot_username(bot: Bot) -> str:
     global _BOT_USERNAME
@@ -73,7 +87,6 @@ def _format_score_result(score_info: dict, prefix: str = "✅ <b>Imtihon tugalla
     total      = TOTAL_TEST_QUESTIONS
     pct        = round(correct / total * 100, 1)
     unanswered = total - attempted
-
     lines = [
         prefix, "",
         f"📈 Ball: <b>{score}</b>",
@@ -87,7 +100,7 @@ def _format_score_result(score_info: dict, prefix: str = "✅ <b>Imtihon tugalla
     return "\n".join(lines)
 
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def get_user_by_telegram_id(telegram_id: int):
     db = Session()
@@ -122,14 +135,25 @@ def _get_direction_subject_names(direction: Direction):
         db.close()
 
 
-# ─── Referal gate tekshiruvi ─────────────────────────────────────────────────
+async def _safe_delete(message: types.Message) -> None:
+    """Xabarni xavfsiz o'chirish — xato chiqsa e'tibor bermaslik."""
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
-async def referral_gate(bot: Bot, user_id: int, message: types.Message) -> bool:
+
+# ─── Referal gate ─────────────────────────────────────────────────────────────
+
+async def referral_gate(bot: Bot, telegram_id: int, message: types.Message) -> bool:
     """
     True = o'tish mumkin.
     False = referal talab bajarilmagan, xabar yuborildi.
+
+    TUZATILDI: telegram_id to'g'ridan-to'g'ri check_referral_gate ga uzatiladi.
+    check_referral_gate ichida users.id ga aylantiriladi.
     """
-    result = check_referral_gate(user_id)
+    result = check_referral_gate(telegram_id)
     if result['allowed']:
         return True
 
@@ -139,10 +163,8 @@ async def referral_gate(bot: Bot, user_id: int, message: types.Message) -> bool:
     invited   = result['invited']
     required  = result['required']
     remaining = result['remaining']
-
-    # Progress bar
-    filled  = min(invited, required)
-    bar     = "🟢" * filled + "⚪️" * (required - filled)
+    filled    = min(invited, required)
+    bar       = "🟢" * filled + "⚪️" * (required - filled)
 
     ref_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
@@ -159,8 +181,7 @@ async def referral_gate(bot: Bot, user_id: int, message: types.Message) -> bool:
         f"{bar}\n\n"
         f"🔗 Sizning havolangiz:\n"
         f"<code>{link_url}</code>\n\n"
-        f"Ushbu havolani do'stlaringizga yuboring. Ular botga birinchi marta kirganida "
-        f"sizning hisobingizga qo'shiladi.\n\n"
+        f"Ushbu havolani do'stlaringizga yuboring.\n\n"
         f"⏳ <i>Qoldi: {remaining} ta</i>",
         reply_markup=ref_kb, parse_mode="HTML"
     )
@@ -169,16 +190,13 @@ async def referral_gate(bot: Bot, user_id: int, message: types.Message) -> bool:
 
 @router.callback_query(F.data == "check_referral")
 async def handle_check_referral(callback_query: types.CallbackQuery,
-                                  state: FSMContext, bot: Bot):
+                                state: FSMContext, bot: Bot):
     uid    = callback_query.from_user.id
     result = check_referral_gate(uid)
 
     if result['allowed']:
         await callback_query.answer("✅ Tabriklaymiz! Talab bajarildi!", show_alert=True)
-        try:
-            await callback_query.message.delete()
-        except Exception:
-            pass
+        await _safe_delete(callback_query.message)
         user = get_user_by_telegram_id(uid)
         if user:
             await show_main_menu(callback_query.message, state, user)
@@ -223,10 +241,11 @@ async def show_main_menu(message: types.Message, state: FSMContext, user: User):
         f"<b>Nima qilmoqchi ekaningizni tanlang:</b>",
         reply_markup=keyboard, parse_mode="HTML"
     )
-    await state.set_state(UserMainMenuStates.main_menu)
+    # State ni tozalash — main_menu state olib tashlandi
+    await state.clear()
 
 
-# ─── Kanal obuna ─────────────────────────────────────────────────────────────
+# ─── Kanal obuna ──────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "check_subscription")
 async def handle_check_subscription(
@@ -236,13 +255,9 @@ async def handle_check_subscription(
     not_sub = await check_user_subscriptions(bot, uid)
     if not not_sub:
         await callback_query.answer("✅ Rahmat! Barcha kanallarga obuna bo'ldingiz.", show_alert=True)
-        try:
-            await callback_query.message.delete()
-        except Exception:
-            pass
+        await _safe_delete(callback_query.message)
         user = get_user_by_telegram_id(uid)
         if user:
-            # Referal gate ham tekshiriladi
             if not await referral_gate(bot, uid, callback_query.message):
                 return
             await show_main_menu(callback_query.message, state, user)
@@ -257,27 +272,23 @@ async def handle_check_subscription(
             pass
 
 
-# ─── /start ──────────────────────────────────────────────────────────────────
+# ─── /start ───────────────────────────────────────────────────────────────────
 
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext, bot: Bot):
     await state.clear()
 
-    # Referal kodni /start argumentidan olish
     args = message.text.split(maxsplit=1)
     ref_code = args[1].strip() if len(args) > 1 else None
 
-    # FSM ga vaqtincha saqlash (ro'yxatdan o'tgandan keyin ishlatiladi)
     if ref_code and ref_code.startswith('ref_'):
         await state.update_data(pending_ref_code=ref_code)
 
-    # Majburiy kanal tekshiruvi
     if not await subscription_gate(bot, message.from_user.id, message):
         return
 
     user = get_user_by_telegram_id(message.from_user.id)
     if user:
-        # Referal gate tekshiruvi (mavjud user uchun)
         if not await referral_gate(bot, message.from_user.id, message):
             return
         await show_main_menu(message, state, user)
@@ -291,7 +302,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot):
         await state.set_state(UserRegistrationStates.waiting_for_full_name)
 
 
-# ─── Ro'yxatdan o'tish ───────────────────────────────────────────────────────
+# ─── Ro'yxatdan o'tish ────────────────────────────────────────────────────────
 
 @router.message(UserRegistrationStates.waiting_for_full_name)
 async def process_full_name(message: types.Message, state: FSMContext):
@@ -391,15 +402,19 @@ async def process_confirmation(callback_query: types.CallbackQuery,
         return
 
     if callback_query.data == "confirm_no":
-        await callback_query.message.edit_text("❌ Bekor qilindi.")
+        # Tasdiqlash xabarini o'chirish
+        await _safe_delete(callback_query.message)
         await state.clear()
-        await callback_query.message.answer("Qayta boshlash: /start")
+        await callback_query.message.answer(
+            "❌ Bekor qilindi. Qayta boshlash uchun /start bosing."
+        )
         return
 
     async with user_lock(callback_query.from_user.id):
         existing = get_user_by_telegram_id(callback_query.from_user.id)
         if existing:
             await callback_query.answer("✅ Allaqachon ro'yxatdan o'tgansiz!", show_alert=True)
+            await _safe_delete(callback_query.message)
             await state.clear()
             await show_main_menu(callback_query.message, state, existing)
             return
@@ -418,13 +433,13 @@ async def process_confirmation(callback_query: types.CallbackQuery,
             )
             db.add(new_user)
             db.commit()
-            new_user_id = new_user.id
+            new_user_id = new_user.id  # DB primary key — FK uchun to'g'ri
 
             user = db.query(User).options(
                 joinedload(User.region), joinedload(User.district), joinedload(User.direction)
             ).filter(User.telegram_id == callback_query.from_user.id).first()
 
-            # ── Referal qayd qilish ──────────────────────────────────────────
+            # Referal qayd qilish — new_user_id = users.id (DB PK), to'g'ri
             pending_ref = data.get('pending_ref_code')
             if pending_ref:
                 success = record_referral_invite(pending_ref, new_user_id)
@@ -433,9 +448,11 @@ async def process_confirmation(callback_query: types.CallbackQuery,
                                 pending_ref, new_user_id)
 
             await callback_query.answer("✅ Ro'yxatdan o'tildi!", show_alert=True)
+            # Tasdiqlash xabarini (inline tugmali) o'chirish
+            await _safe_delete(callback_query.message)
             await state.clear()
 
-            # ── Referal gate tekshiruvi (yangi user uchun) ───────────────────
+            # Referal gate — telegram_id bilan (to'g'ri)
             if not await referral_gate(bot, callback_query.from_user.id, callback_query.message):
                 return
 
@@ -447,10 +464,15 @@ async def process_confirmation(callback_query: types.CallbackQuery,
             db.close()
 
 
-# ─── Leaderboard ─────────────────────────────────────────────────────────────
+# ─── Leaderboard ──────────────────────────────────────────────────────────────
 
-@router.message(UserMainMenuStates.main_menu, F.text == "🏆 Reyting")
+@router.message(F.text == "🏆 Reyting")
 async def show_leaderboard(message: types.Message, state: FSMContext):
+    # Test jarayonida bosganlar uchun
+    current_state = await state.get_state()
+    if current_state == TestSessionStates.test_active:
+        return
+
     user = get_user_by_telegram_id(message.from_user.id)
     if not user:
         await message.answer("❌ Ro'yxatdan o'ting!")
@@ -523,10 +545,15 @@ async def handle_leaderboard_period(callback_query: types.CallbackQuery, state: 
     await callback_query.answer()
 
 
-# ─── Testni boshlash ─────────────────────────────────────────────────────────
+# ─── Testni boshlash ──────────────────────────────────────────────────────────
 
-@router.message(UserMainMenuStates.main_menu, F.text == "🧪 Testni boshlash")
+@router.message(F.text == "🧪 Testni boshlash")
 async def start_test_button(message: types.Message, state: FSMContext, bot: Bot):
+    # Agar test jarayonida bo'lsa — e'tibor bermaslik
+    current_state = await state.get_state()
+    if current_state == TestSessionStates.test_active:
+        return
+
     if not await subscription_gate(bot, message.from_user.id, message):
         return
     if not await referral_gate(bot, message.from_user.id, message):
@@ -587,41 +614,32 @@ async def handle_test_resume(callback_query: types.CallbackQuery,
     active = TestService.get_active_participation(user.id)
     if not active:
         await callback_query.answer("❌ Aktiv test topilmadi!", show_alert=True)
-        try:
-            await callback_query.message.delete()
-        except Exception:
-            pass
+        await _safe_delete(callback_query.message)
         keyboard = await get_main_menu_keyboard()
         await callback_query.message.answer("🏠 Bosh menyu", reply_markup=keyboard)
-        await state.set_state(UserMainMenuStates.main_menu)
+        await state.clear()
         return
 
     snapshot = TestService.load_snapshot(active.id)
     if not snapshot or not snapshot.get('questions'):
         await callback_query.answer("❌ Test ma'lumotlari topilmadi!", show_alert=True)
         TestService.complete_test(active.id)
-        try:
-            await callback_query.message.delete()
-        except Exception:
-            pass
+        await _safe_delete(callback_query.message)
         keyboard = await get_main_menu_keyboard()
         await callback_query.message.answer("🏠 Bosh menyu", reply_markup=keyboard)
-        await state.set_state(UserMainMenuStates.main_menu)
+        await state.clear()
         return
 
     if active.deadline_at and active.deadline_at <= datetime.utcnow():
         await callback_query.answer("❌ Test vaqti tugagan!", show_alert=True)
         score_info = TestService.complete_test(active.id)
-        try:
-            await callback_query.message.delete()
-        except Exception:
-            pass
+        await _safe_delete(callback_query.message)
         keyboard = await get_main_menu_keyboard()
         result_text = "⏰ Test vaqti tugadi."
         if score_info:
             result_text = _format_score_result(score_info, "⏰ <b>Vaqt tugadi!</b>")
         await callback_query.message.answer(result_text, reply_markup=keyboard, parse_mode="HTML")
-        await state.set_state(UserMainMenuStates.main_menu)
+        await state.clear()
         return
 
     current_idx = snapshot['current_question_index']
@@ -638,10 +656,8 @@ async def handle_test_resume(callback_query: types.CallbackQuery,
         deadline_ts=active.deadline_at.timestamp(),
     )
 
-    try:
-        await callback_query.message.delete()
-    except Exception:
-        pass
+    # "Davom ettirish/Yangi test" xabarini o'chirish
+    await _safe_delete(callback_query.message)
 
     await callback_query.message.answer(
         f"▶️ <b>Test davom ettirildi!</b> (qolgan: {mins} daq)\n\n"
@@ -671,14 +687,9 @@ async def handle_force_new_test(callback_query: types.CallbackQuery, state: FSMC
     for p_id in active_ids:
         TestService.complete_test(p_id)
 
-    try:
-        await callback_query.message.delete()
-    except Exception:
-        pass
-
+    await _safe_delete(callback_query.message)
     await callback_query.answer("✅ Eski test yakunlandi")
     await state.clear()
-    await state.set_state(UserMainMenuStates.main_menu)
 
     if not user.direction_id:
         db2 = Session()
@@ -749,11 +760,8 @@ async def test_direction_page(callback_query: types.CallbackQuery, state: FSMCon
 @router.callback_query(TestSessionStates.waiting_for_direction, F.data == "direction_list_back")
 async def test_direction_back(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.answer()
-    try:
-        await callback_query.message.delete()
-    except Exception:
-        pass
-    await state.set_state(UserMainMenuStates.main_menu)
+    await _safe_delete(callback_query.message)
+    await state.clear()
     keyboard = await get_main_menu_keyboard()
     await callback_query.message.answer("🏠 Bosh menyu", reply_markup=keyboard)
 
@@ -776,10 +784,7 @@ async def test_direction_selected(callback_query: types.CallbackQuery, state: FS
         user_db.direction_id = direction_id
         db.commit()
     db.close()
-    try:
-        await callback_query.message.delete()
-    except Exception:
-        pass
+    await _safe_delete(callback_query.message)
     user = get_user_by_telegram_id(callback_query.from_user.id)
     await callback_query.answer(f"✅ {direction.name_uz[:30]}")
     await _show_test_confirmation(callback_query.message, state, user)
@@ -789,10 +794,7 @@ async def test_direction_selected(callback_query: types.CallbackQuery, state: FS
 
 @router.message(TestSessionStates.test_confirmation)
 async def block_messages_during_confirmation(message: types.Message, state: FSMContext):
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    await _safe_delete(message)
 
 
 @router.callback_query(TestSessionStates.test_confirmation, F.data == "test_start_confirm")
@@ -860,10 +862,8 @@ async def confirm_test_start(callback_query: types.CallbackQuery,
             )
             TestService.save_snapshot(participation.id, questions, 0, {})
 
-            try:
-                await callback_query.message.delete()
-            except Exception:
-                pass
+            # Tasdiqlash xabarini (inline tugmali) o'chirish
+            await _safe_delete(callback_query.message)
 
             await callback_query.message.answer(
                 _format_question(questions[0], 0, len(questions)),
@@ -896,11 +896,8 @@ def _format_question(q: dict, index: int, total: int) -> str:
 
 @router.callback_query(TestSessionStates.test_confirmation, F.data == "test_cancel")
 async def cancel_test(callback_query: types.CallbackQuery, state: FSMContext):
-    try:
-        await callback_query.message.delete()
-    except Exception:
-        pass
-    await state.set_state(UserMainMenuStates.main_menu)
+    await _safe_delete(callback_query.message)
+    await state.clear()
     user     = get_user_by_telegram_id(callback_query.from_user.id)
     keyboard = await get_main_menu_keyboard()
     await callback_query.message.answer(
@@ -934,7 +931,6 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
         if not questions or participation_id is None:
             await callback_query.answer("❌ Test topilmadi.", show_alert=True)
             await state.clear()
-            await state.set_state(UserMainMenuStates.main_menu)
             keyboard = await get_main_menu_keyboard()
             await callback_query.message.answer("🏠 Bosh menyu", reply_markup=keyboard)
             return
@@ -945,12 +941,8 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
 
         if deadline_ts and datetime.utcnow().timestamp() > deadline_ts:
             score_info = TestService.complete_test(participation_id)
-            try:
-                await callback_query.message.delete()
-            except Exception:
-                pass
+            await _safe_delete(callback_query.message)
             await state.clear()
-            await state.set_state(UserMainMenuStates.main_menu)
             result_text = "⏰ Test vaqti tugadi!"
             if score_info:
                 result_text = _format_score_result(score_info, "⏰ <b>Vaqt tugadi!</b>")
@@ -983,12 +975,8 @@ async def handle_test_answer(callback_query: types.CallbackQuery, state: FSMCont
 
         if current_index >= len(questions):
             score_info = TestService.complete_test(participation_id)
-            try:
-                await callback_query.message.delete()
-            except Exception:
-                pass
+            await _safe_delete(callback_query.message)
             await state.clear()
-            await state.set_state(UserMainMenuStates.main_menu)
 
             result_text = (
                 _format_score_result(score_info) if score_info else "✅ Imtihon tugallandi!"
@@ -1023,19 +1011,15 @@ async def finish_test_early(callback_query: types.CallbackQuery, state: FSMConte
         if not participation_id:
             await callback_query.answer("❌ Test topilmadi.", show_alert=True)
             await state.clear()
-            await state.set_state(UserMainMenuStates.main_menu)
             keyboard = await get_main_menu_keyboard()
             await callback_query.message.answer("🏠 Bosh menyu", reply_markup=keyboard)
             return
 
         score_info = TestService.complete_test(participation_id)
-        try:
-            await callback_query.message.delete()
-        except Exception:
-            pass
+        # Test xabarini o'chirish
+        await _safe_delete(callback_query.message)
 
         await state.clear()
-        await state.set_state(UserMainMenuStates.main_menu)
 
         result_text = (
             _format_score_result(score_info) if score_info else "✅ Imtihon tugallandi!"
@@ -1046,13 +1030,17 @@ async def finish_test_early(callback_query: types.CallbackQuery, state: FSMConte
         await callback_query.answer()
 
 
-# ─── Natijalarim ─────────────────────────────────────────────────────────────
+# ─── Natijalarim ──────────────────────────────────────────────────────────────
 
-@router.message(UserMainMenuStates.main_menu, F.text == "📊 Natijalarim")
+@router.message(F.text == "📊 Natijalarim")
 async def show_my_results(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state == TestSessionStates.test_active:
+        return
+
     user = get_user_by_telegram_id(message.from_user.id)
     if not user:
-        await message.answer("❌ Ro'yxatdan o'tmagan edingiz!")
+        await message.answer("📊 <b>Hali test topshirilmagan.</b>", parse_mode="HTML")
         return
 
     scores = TestService.get_user_scores(user.id, include_archived=True, limit=10)
@@ -1074,8 +1062,12 @@ async def show_my_results(message: types.Message, state: FSMContext):
 
 # ─── Referal (user tomonidan) ─────────────────────────────────────────────────
 
-@router.message(UserMainMenuStates.main_menu, F.text == "🔗 Referalim")
+@router.message(F.text == "🔗 Referalim")
 async def show_my_referral(message: types.Message, state: FSMContext, bot: Bot):
+    current_state = await state.get_state()
+    if current_state == TestSessionStates.test_active:
+        return
+
     user = get_user_by_telegram_id(message.from_user.id)
     if not user:
         await message.answer("❌ Ro'yxatdan o'ting!")
@@ -1089,7 +1081,12 @@ async def show_my_referral(message: types.Message, state: FSMContext, bot: Bot):
         )
         return
 
-    link = get_or_create_referral_link(user.id)
+    # telegram_id beramiz — servis ichida db_id ga aylantiradi
+    link = get_or_create_referral_link(message.from_user.id)
+    if not link:
+        await message.answer("❌ Xato yuz berdi. Iltimos qayta urinib ko'ring.")
+        return
+
     bot_username = await _get_bot_username(bot)
     link_url = f"https://t.me/{bot_username}?start={link.code}"
     invited  = link.invited_count or 0
@@ -1154,8 +1151,12 @@ async def show_global_leaderboard_cb(callback_query: types.CallbackQuery, state:
     await callback_query.answer()
 
 
-@router.message(UserMainMenuStates.main_menu, F.text == "❓ Yordam")
+@router.message(F.text == "❓ Yordam")
 async def show_help(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state == TestSessionStates.test_active:
+        return
+
     await message.answer(
         "❓ <b>Yordam</b>\n\n"
         f"180 daqiqa · {TOTAL_TEST_QUESTIONS} savol\n\n"
@@ -1169,8 +1170,12 @@ async def show_help(message: types.Message, state: FSMContext):
     )
 
 
-@router.message(UserMainMenuStates.main_menu, F.text == "👤 Profilim")
+@router.message(F.text == "👤 Profilim")
 async def show_profile(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state == TestSessionStates.test_active:
+        return
+
     user = get_user_by_telegram_id(message.from_user.id)
     if not user:
         await message.answer("❌ Ro'yxatdan o'tmagan edingiz!")
@@ -1207,11 +1212,8 @@ async def show_profile(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data == "profile_back")
 async def profile_back(callback_query: types.CallbackQuery, state: FSMContext):
-    try:
-        await callback_query.message.delete()
-    except Exception:
-        pass
-    await state.set_state(UserMainMenuStates.main_menu)
+    await _safe_delete(callback_query.message)
+    await state.clear()
 
 
 @router.callback_query(F.data == "profile_edit_name")
@@ -1235,7 +1237,7 @@ async def profile_edit_name_save(message: types.Message, state: FSMContext):
             u.first_name = first
             u.last_name  = last
             db.commit()
-        await state.set_state(UserMainMenuStates.main_menu)
+        await state.clear()
         await message.answer(f"✅ F.I.SH yangilandi: <b>{first} {last}</b>", parse_mode="HTML")
         await show_profile(message, state)
     except Exception:
@@ -1269,11 +1271,8 @@ async def profile_direction_page(callback_query: types.CallbackQuery, state: FSM
 
 @router.callback_query(ProfileEditStates.edit_direction, F.data == "direction_list_back")
 async def profile_direction_back(callback_query: types.CallbackQuery, state: FSMContext):
-    await state.set_state(UserMainMenuStates.main_menu)
-    try:
-        await callback_query.message.delete()
-    except Exception:
-        pass
+    await state.clear()
+    await _safe_delete(callback_query.message)
     await show_profile(callback_query.message, state)
 
 
@@ -1297,29 +1296,20 @@ async def profile_direction_selected(callback_query: types.CallbackQuery, state:
         db.commit()
     db.close()
     await callback_query.answer("✅ Saqlandi!")
-    await state.set_state(UserMainMenuStates.main_menu)
-    try:
-        await callback_query.message.delete()
-    except Exception:
-        pass
+    await state.clear()
+    await _safe_delete(callback_query.message)
     await show_profile(callback_query.message, state)
 
 
 @router.message(F.text == "direction_search_failed")
 async def handle_search_failed(message: types.Message, state: FSMContext):
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    await _safe_delete(message)
 
 
 @router.message(F.text.startswith("direction_chosen:"))
 async def handle_any_direction_chosen(message: types.Message, state: FSMContext):
     direction_id = message.text.split(":", 1)[1].strip()
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    await _safe_delete(message)
     db = Session()
     direction = db.query(Direction).options(
         joinedload(Direction.subject1), joinedload(Direction.subject2)
@@ -1347,7 +1337,7 @@ async def handle_any_direction_chosen(message: types.Message, state: FSMContext)
         ProfileEditStates.edit_direction,
         ProfileEditStates.searching_direction,
     ):
-        await state.set_state(UserMainMenuStates.main_menu)
+        await state.clear()
         await show_profile(message, state)
     else:
         await show_main_menu(message, state, user)
@@ -1403,10 +1393,7 @@ async def test_direction_search_selected(callback_query: types.CallbackQuery, st
         user_db.direction_id = direction_id
         db.commit()
     db.close()
-    try:
-        await callback_query.message.delete()
-    except Exception:
-        pass
+    await _safe_delete(callback_query.message)
     user = get_user_by_telegram_id(callback_query.from_user.id)
     await callback_query.answer(f"✅ {direction.name_uz[:30]}")
     await _show_test_confirmation(callback_query.message, state, user)
@@ -1463,31 +1450,33 @@ async def profile_direction_search_selected(callback_query: types.CallbackQuery,
         db.commit()
     db.close()
     await callback_query.answer("✅ Saqlandi!")
-    await state.set_state(UserMainMenuStates.main_menu)
-    try:
-        await callback_query.message.delete()
-    except Exception:
-        pass
+    await state.clear()
+    await _safe_delete(callback_query.message)
     await show_profile(callback_query.message, state)
 
 
-@router.message(UserMainMenuStates.main_menu, F.text == "🧪 Yana test qol")
+@router.message(F.text == "🧪 Yana test qol")
 async def another_test(message: types.Message, state: FSMContext, bot: Bot):
     await start_test_button(message, state, bot)
 
 
-@router.message(UserMainMenuStates.main_menu, F.text == "📊 Natijalarni ko'rish")
+@router.message(F.text == "📊 Natijalarni ko'rish")
 async def view_results_from_test(message: types.Message, state: FSMContext):
     await show_my_results(message, state)
 
 
-@router.message(UserMainMenuStates.main_menu, F.text == "🏠 Bosh menyu")
+@router.message(F.text == "🏠 Bosh menyu")
 async def return_to_main_menu(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state == TestSessionStates.test_active:
+        return
+
     user = get_user_by_telegram_id(message.from_user.id)
     if not user:
         await message.answer("❌ Ro'yxatdan o'tmagan edingiz!")
         return
     keyboard = await get_main_menu_keyboard()
+    await state.clear()
     await message.answer(
         f"🏛 <b>DTM Test Bot</b>\n\nAssalomu alaykum, <b>{user.first_name}</b>!\n\n"
         f"Nima qilmoqchi ekaningizni tanlang:",

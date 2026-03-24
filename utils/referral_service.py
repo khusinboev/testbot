@@ -1,11 +1,13 @@
 """
 utils/referral_service.py
 
-Referal tizimi logikasi:
-  - Har user uchun unikal kod yaratish
-  - /start?ref=CODE orqali kelgan userlarni qayd qilish
-  - Referal talab tekshiruvi (required_count)
-  - Admin sozlamalari CRUD
+TUZATILDI:
+  - ASOSIY XATO: get_or_create_referral_link() va check_referral_gate()
+    telegram_id qabul qilib, users.id (DB primary key) ga FK bog'langan
+    ReferralLink.user_id ga yozardi → ForeignKeyViolation
+
+    Endi barcha public funksiyalar telegram_id qabul qiladi va
+    ichida users jadvalidan db_user_id ni topadi.
 """
 from __future__ import annotations
 
@@ -26,7 +28,6 @@ logger = logging.getLogger(__name__)
 # ─── Sozlamalar ──────────────────────────────────────────────────────────────
 
 class _ReferralSettingsDTO:
-    """Session yopilgandan keyin xavfsiz ishlatish uchun oddiy DTO."""
     def __init__(self, is_enabled, required_count, reward_message):
         self.is_enabled     = is_enabled
         self.required_count = required_count
@@ -34,7 +35,6 @@ class _ReferralSettingsDTO:
 
 
 def get_referral_settings() -> _ReferralSettingsDTO:
-    """Sozlamalarni oladi, yo'q bo'lsa yaratadi. DTO qaytaradi (session mustaqil)."""
     db = Session()
     try:
         settings = db.query(ReferralSettings).filter(ReferralSettings.id == 1).first()
@@ -54,6 +54,7 @@ def get_referral_settings() -> _ReferralSettingsDTO:
         )
     finally:
         db.close()
+
 
 def update_referral_settings(
     is_enabled: Optional[bool] = None,
@@ -81,80 +82,121 @@ def update_referral_settings(
         db.close()
 
 
-# ─── Referal link ─────────────────────────────────────────────────────────────
+# ─── Yordamchi: telegram_id → db_user_id ──────────────────────────────────
+
+def _get_db_user_id(telegram_id: int) -> Optional[int]:
+    """telegram_id bo'yicha users.id ni topadi."""
+    db = Session()
+    try:
+        user = db.query(User.id).filter(User.telegram_id == telegram_id).first()
+        return user[0] if user else None
+    finally:
+        db.close()
+
+
+# ─── Referal link ──────────────────────────────────────────────────────────
 
 def _generate_code() -> str:
-    """8 ta harfdan iborat unikal kod."""
     alphabet = string.ascii_uppercase + string.digits
     return 'ref_' + ''.join(secrets.choice(alphabet) for _ in range(8))
 
 
-def get_or_create_referral_link(user_id: int) -> Optional[object]:
-    """User uchun referal linkni oladi yoki yaratadi. DTO qaytaradi."""
+class _LinkDTO:
+    """Session mustaqil DTO."""
+    def __init__(self, id, code, invited_count, user_id):
+        self.id            = id
+        self.code          = code
+        self.invited_count = invited_count or 0
+        self.user_id       = user_id
+
+
+def get_or_create_referral_link(telegram_id: int) -> Optional[_LinkDTO]:
+    """
+    telegram_id bo'yicha user uchun referal linkni oladi yoki yaratadi.
+
+    TUZATILDI: avval telegram_id ni users.id ga (DB PK) aylantiradi,
+    shundan keyin ReferralLink.user_id ga yozadi (FK to'g'ri ishlaydi).
+    """
+    db_user_id = _get_db_user_id(telegram_id)
+    if db_user_id is None:
+        logger.warning("get_or_create_referral_link: telegram_id=%d users jadvalida topilmadi",
+                       telegram_id)
+        return None
+
     db = Session()
     try:
-        link = db.query(ReferralLink).filter(ReferralLink.user_id == user_id).first()
+        link = db.query(ReferralLink).filter(ReferralLink.user_id == db_user_id).first()
         if not link:
             for _ in range(10):
                 code = _generate_code()
                 if not db.query(ReferralLink).filter(ReferralLink.code == code).first():
                     break
-            link = ReferralLink(user_id=user_id, code=code, invited_count=0)
+            link = ReferralLink(user_id=db_user_id, code=code, invited_count=0)
             db.add(link)
             db.commit()
             db.refresh(link)
-
-        # Session yopilishidan oldin kerakli ma'lumotlarni DTO ga ko'chiramiz
-        class _LinkDTO:
-            pass
-        dto = _LinkDTO()
-        dto.id            = link.id
-        dto.code          = link.code
-        dto.invited_count = link.invited_count or 0
-        dto.user_id       = link.user_id
-        return dto
+        return _LinkDTO(
+            id=link.id,
+            code=link.code,
+            invited_count=link.invited_count,
+            user_id=link.user_id,
+        )
     finally:
         db.close()
 
 
-def get_referral_link_by_code(code: str) -> Optional[ReferralLink]:
+def get_or_create_referral_link_by_db_id(db_user_id: int) -> Optional[_LinkDTO]:
+    """
+    users.id (DB PK) bo'yicha referal link oladi yoki yaratadi.
+    Admin panel va ichki servislar uchun.
+    """
     db = Session()
     try:
-        return db.query(ReferralLink).filter(ReferralLink.code == code).first()
+        link = db.query(ReferralLink).filter(ReferralLink.user_id == db_user_id).first()
+        if not link:
+            for _ in range(10):
+                code = _generate_code()
+                if not db.query(ReferralLink).filter(ReferralLink.code == code).first():
+                    break
+            link = ReferralLink(user_id=db_user_id, code=code, invited_count=0)
+            db.add(link)
+            db.commit()
+            db.refresh(link)
+        return _LinkDTO(
+            id=link.id,
+            code=link.code,
+            invited_count=link.invited_count,
+            user_id=link.user_id,
+        )
     finally:
         db.close()
 
 
-# ─── Taklif qayd qilish ───────────────────────────────────────────────────────
+# ─── Taklif qayd qilish ──────────────────────────────────────────────────────
 
-def record_referral_invite(referral_code: str, invited_user_id: int) -> bool:
+def record_referral_invite(referral_code: str, invited_db_user_id: int) -> bool:
     """
-    Yangi user referal orqali ro'yxatdan o'tganda chaqiriladi.
-    True = muvaffaqiyatli qayd qilindi.
-    False = allaqachon qayd qilingan yoki kod noto'g'ri.
+    invited_db_user_id = yangi ro'yxatdan o'tgan userning users.id (DB PK).
+    Bu funksiya to'g'ri — u allaqachon DB id qabul qiladi.
     """
     db = Session()
     try:
-        # Kod mavjudligini tekshirish
         link = db.query(ReferralLink).filter(ReferralLink.code == referral_code).first()
         if not link:
             return False
 
-        # User o'zini taklif qilishi mumkin emas
-        if link.user_id == invited_user_id:
+        if link.user_id == invited_db_user_id:
             return False
 
-        # Allaqachon qayd qilinganmi?
         existing = db.query(ReferralInvite).filter(
-            ReferralInvite.invited_user_id == invited_user_id
+            ReferralInvite.invited_user_id == invited_db_user_id
         ).first()
         if existing:
             return False
 
-        # Qayd qilish
         invite = ReferralInvite(
             referral_link_id=link.id,
-            invited_user_id=invited_user_id,
+            invited_user_id=invited_db_user_id,
         )
         db.add(invite)
         link.invited_count = (link.invited_count or 0) + 1
@@ -168,28 +210,17 @@ def record_referral_invite(referral_code: str, invited_user_id: int) -> bool:
         db.close()
 
 
-# ─── Referal talab tekshiruvi ─────────────────────────────────────────────────
+# ─── Referal gate ────────────────────────────────────────────────────────────
 
-def check_referral_gate(user_id: int) -> Dict[str, Any]:
+def check_referral_gate(telegram_id: int) -> Dict[str, Any]:
     """
-    Botga kirish tekshiruvi.
-
-    Qaytariladi:
-      {
-        'allowed': bool,        # Botdan foydalanish mumkinmi?
-        'enabled': bool,        # Referal tizimi yoqilganmi?
-        'required': int,        # Nechta referal kerak (0 = talab yo'q)
-        'invited': int,         # Hozir nechta taklif qilgan
-        'remaining': int,       # Qancha qoldi
-        'link_code': str,       # Referal kodi
-        'link_url': str,        # To'liq havola (bot username kerak)
-      }
+    telegram_id qabul qiladi.
+    TUZATILDI: get_or_create_referral_link(telegram_id) endi to'g'ri ishlaydi.
     """
     settings = get_referral_settings()
 
-    # Tizim o'chirilgan bo'lsa — hamma o'ta oladi
     if not settings.is_enabled or settings.required_count == 0:
-        link = get_or_create_referral_link(user_id)
+        link = get_or_create_referral_link(telegram_id)
         return {
             'allowed':   True,
             'enabled':   settings.is_enabled,
@@ -200,9 +231,20 @@ def check_referral_gate(user_id: int) -> Dict[str, Any]:
             'link_url':  '',
         }
 
-    # Talab bor — tekshirish
-    link = get_or_create_referral_link(user_id)
-    invited = link.invited_count if link else 0
+    link = get_or_create_referral_link(telegram_id)
+    if link is None:
+        # User DB da topilmadi — ro'yxatdan o'tmagan, o'tkazamiz
+        return {
+            'allowed':   True,
+            'enabled':   True,
+            'required':  settings.required_count,
+            'invited':   0,
+            'remaining': settings.required_count,
+            'link_code': '',
+            'link_url':  '',
+        }
+
+    invited   = link.invited_count
     remaining = max(0, settings.required_count - invited)
 
     return {
@@ -211,7 +253,7 @@ def check_referral_gate(user_id: int) -> Dict[str, Any]:
         'required':  settings.required_count,
         'invited':   invited,
         'remaining': remaining,
-        'link_code': link.code if link else '',
+        'link_code': link.code,
         'link_url':  '',
     }
 
@@ -219,13 +261,11 @@ def check_referral_gate(user_id: int) -> Dict[str, Any]:
 # ─── Statistika ──────────────────────────────────────────────────────────────
 
 def get_referral_stats() -> Dict[str, Any]:
-    """Admin panel uchun umumiy statistika."""
     db = Session()
     try:
         total_links   = db.query(func.count(ReferralLink.id)).scalar() or 0
         total_invites = db.query(func.count(ReferralInvite.id)).scalar() or 0
 
-        # Top 10 referal
         top_referrers = (
             db.query(ReferralLink, User)
             .join(User, ReferralLink.user_id == User.id)
@@ -237,11 +277,11 @@ def get_referral_stats() -> Dict[str, Any]:
         top_list = []
         for link, user in top_referrers:
             top_list.append({
-                'user_id':      user.id,
-                'first_name':   user.first_name,
-                'last_name':    user.last_name or '',
-                'phone':        user.phone,
-                'code':         link.code,
+                'user_id':       user.id,
+                'first_name':    user.first_name,
+                'last_name':     user.last_name or '',
+                'phone':         user.phone,
+                'code':          link.code,
                 'invited_count': link.invited_count,
             })
 
@@ -255,7 +295,7 @@ def get_referral_stats() -> Dict[str, Any]:
 
 
 def get_user_referral_detail(user_id: int) -> Dict[str, Any]:
-    """Bitta user ning referal ma'lumoti."""
+    """user_id = users.id (DB PK). Admin panel uchun."""
     db = Session()
     try:
         link = db.query(ReferralLink).filter(ReferralLink.user_id == user_id).first()
@@ -281,10 +321,10 @@ def get_user_referral_detail(user_id: int) -> Dict[str, Any]:
             })
 
         return {
-            'has_link':     True,
-            'code':         link.code,
+            'has_link':      True,
+            'code':          link.code,
             'invited_count': link.invited_count,
-            'invites':      invite_list,
+            'invites':       invite_list,
         }
     finally:
         db.close()
