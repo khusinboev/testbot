@@ -2,8 +2,14 @@
 utils/excel_parser.py — Fanlar majmuasi Excel faylini o'qish
 
 Fayl qidiriladigan joylar (tartib bo'yicha):
-  1. data/Fanlar_majmuasi_2025-2026.xlsx  ← tavsiya etilgan joy
-  2. Fanlar_majmuasi_2025-2026.xlsx        ← loyiha ildizida
+  1. data/Fanlar_majmuasi_2025-2026.xlsx   ← tavsiya etilgan joy
+  2. Fanlar_majmuasi_2025-2026.xlsx         ← loyiha ildizida
+
+TUZATILDI:
+  ROOT_DIR — utils/ ning parenti emas, balki loyiha ILDIZI:
+    __file__ = .../utils/excel_parser.py
+    dirname(__file__)        = .../utils/
+    dirname(dirname(...))    = loyiha ildizi  ✅
 """
 import os
 import re
@@ -139,10 +145,10 @@ def _parse_sheet(ws) -> List[Dict]:
         seen_codes.add(code)
 
         directions.append({
-            "code":       code,
-            "name":       name,
-            "subject1":   subj1,
-            "subject2":   subj2,
+            "code":        code,
+            "name":        name,
+            "subject1":    subj1,
+            "subject2":    subj2,
             "subject1_id": get_subject_id(subj1),
             "subject2_id": get_subject_id(subj2),
         })
@@ -168,8 +174,10 @@ def parse_directions_from_excel() -> List[Dict]:
 
             if all_directions:
                 seen = set()
-                unique = [d for d in all_directions
-                          if d["code"] not in seen and not seen.add(d["code"])]
+                unique = [
+                    d for d in all_directions
+                    if d["code"] not in seen and not seen.add(d["code"])
+                ]
                 print(f"  ✅ Jami: {len(unique)} ta unikal yo'nalish")
                 return unique
         except Exception as e:
@@ -177,16 +185,28 @@ def parse_directions_from_excel() -> List[Dict]:
             continue
 
     print(f"\n⚠️  Excel fayl topilmadi!")
-    print(f"   Fayl joyi: data/Fanlar_majmuasi_2025-2026.xlsx")
-    print(f"   Fallback 5 ta yo'nalish ishlatiladi.\n")
+    print(f"   Qidirilgan joylar:")
+    for p in EXCEL_FILES:
+        print(f"     - {os.path.relpath(p, ROOT_DIR)}")
+    print(f"   Fallback: 5 ta namuna yo'nalish ishlatiladi.\n")
     return _fallback_directions()
 
 
 def _fallback_directions() -> List[Dict]:
     return [
-        {"code": "60610400", "name": "Dasturiy injiniring",    "subject1": "Matematika", "subject2": "Fizika",   "subject1_id": 1, "subject2_id": 2},
-        {"code": "60610500", "name": "Sun'iy intellekt",        "subject1": "Matematika", "subject2": "Fizika",   "subject1_id": 1, "subject2_id": 2},
-        {"code": "60540100", "name": "Matematika",              "subject1": "Matematika", "subject2": "Fizika",   "subject1_id": 1, "subject2_id": 2},
-        {"code": "60110100", "name": "Pedagogika",              "subject1": "Tarix",      "subject2": "Ona tili", "subject1_id": 5, "subject2_id": 6},
-        {"code": "60420100", "name": "Yurisprudensiya",         "subject1": "Tarix",      "subject2": "Chet tili","subject1_id": 5, "subject2_id": 9},
+        {"code": "60610400", "name": "Dasturiy injiniring",
+         "subject1": "Matematika", "subject2": "Fizika",
+         "subject1_id": 1, "subject2_id": 2},
+        {"code": "60610500", "name": "Sun'iy intellekt",
+         "subject1": "Matematika", "subject2": "Fizika",
+         "subject1_id": 1, "subject2_id": 2},
+        {"code": "60540100", "name": "Matematika",
+         "subject1": "Matematika", "subject2": "Fizika",
+         "subject1_id": 1, "subject2_id": 2},
+        {"code": "60110100", "name": "Pedagogika",
+         "subject1": "Tarix", "subject2": "Ona tili",
+         "subject1_id": 5, "subject2_id": 6},
+        {"code": "60420100", "name": "Yurisprudensiya",
+         "subject1": "Tarix", "subject2": "Chet tili",
+         "subject1_id": 5, "subject2_id": 9},
     ]
