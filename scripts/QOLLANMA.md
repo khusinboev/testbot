@@ -73,8 +73,8 @@ python scripts/manage.py status
 
 ```bash
 cd /path/to/your/projects
-git clone <repo_url> test-bot
-cd test-bot
+git clone <repo_url> test-testbot
+cd test-testbot
 ```
 
 ### 2. Virtual muhit (ixtiyoriy, tavsiya etiladi)
@@ -168,7 +168,7 @@ python scripts/manage.py status
 
 **Terminal 1 — Bot:**
 ```bash
-python -m bot.main
+python -m testbot.main
 ```
 
 **Terminal 2 — Admin panel:**
@@ -387,12 +387,12 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable dtm-bot dtm-admin
-sudo systemctl start dtm-bot dtm-admin
+sudo systemctl enable dtm-testbot dtm-admin
+sudo systemctl start dtm-testbot dtm-admin
 
 # Holat tekshirish
-sudo systemctl status dtm-bot
-sudo journalctl -u dtm-bot -f
+sudo systemctl status dtm-testbot
+sudo journalctl -u dtm-testbot -f
 ```
 
 ### Docker (ixtiyoriy)
@@ -443,8 +443,8 @@ volumes:
 
 ```bash
 docker-compose up -d
-docker-compose exec bot python scripts/manage.py init
-docker-compose exec bot python scripts/manage.py seed
+docker-compose exec testbot python scripts/manage.py init
+docker-compose exec testbot python scripts/manage.py seed
 ```
 
 ---

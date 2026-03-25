@@ -44,9 +44,9 @@ dp      = Dispatcher(storage=storage)
 async def main():
     logger.info("DTM Bot ishga tushmoqda...")
     try:
-        from bot.handlers.start        import router as start_router
-        from bot.handlers.registration import router as registration_router
-        from bot.handlers.inline       import router as inline_router
+        from bots.testbot.handlers.start import router as start_router
+        from bots.testbot.handlers.registration import router as registration_router
+        from bots.testbot.handlers.inline import router as inline_router
 
         # Tartibi muhim: registration avval (u ko'proq handler tutadi)
         dp.include_router(registration_router)

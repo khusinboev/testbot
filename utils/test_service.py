@@ -1,49 +1,33 @@
 """
 utils/test_service.py
 
-TUZATILDI (to'liq qayta yozildi):
-  1. Score arxiv tizimi:
-       - Foydalanuvchi bir yo'nalishda qayta test yechganda oldingi score arxivlanadi
-       - is_archived=True natijalar reyting/leaderboard da ko'rinmaydi
-       - Shaxsiy natijalar sahifasida hammasi (arxivlangan ham) ko'rinadi
-
-  2. Leaderboard duplikatlardan himoya:
-       - _rebuild_leaderboard_for_direction(): delete-then-recreate pattern
-       - Har user uchun faqat bitta (eng yaxshi) natija
-       - Uchala period (daily, weekly, all_time) alohida tozalanadi va qayta yaratiladi
-
-  3. attempted_count tracking:
-       - Test chala tashlab ketilsa ham qayd qilinadi
-       - attempted_count = javob berilgan savollar soni (skip/unanswered hisoblanmaydi)
-       - total_questions = har doim 90
-       - Foiz = correct_count / 90 * 100
-
-  4. complete_test() yaxshilandi:
-       - Takroriy chaqiruvdan himoya
-       - Snapshot tozalanadi
-       - Arxivlash oldin, keyin yangi Score
-
-  5. get_user_scores() TUZATILDI:
-       - INNER JOIN → OUTER JOIN (participation_id=NULL bo'lgan eski scorlar ham ko'rinadi)
-       - s.participation lazy load → session yopilgandan keyin xato bermaslik uchun
-         participation lar alohida batch so'rovda olinadi
-       - debug `print(s.direction_id)` olib tashlandi
+TestService bir klass — lekin ichki metodlar mantiqiy bloklarga ajratilgan:
+  ┌─ Session management   get_or_create_test_session()
+  ├─ Participation        create / get_active / save_snapshot / load_snapshot
+  ├─ Questions            get_test_questions()
+  ├─ Answers              save_answer()
+  ├─ Scoring              calculate_score()  (private-ish)
+  ├─ Completion           complete_test()    (asosiy)
+  ├─ Scheduler support    get_expired_participations()
+  ├─ Leaderboard build    _rebuild_leaderboard_for_direction()
+  └─ Leaderboard read     get_direction_leaderboard() / get_user_direction_rank()
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, date
-from typing import Optional, List, Dict, Any, Tuple
+import random
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
+import config
 from database.db import Session
 from database.models import (
-    Question, Direction, UserTestParticipation,
-    UserAnswer, Leaderboard, TestSession, Score, Admin, User
+    Admin, Direction, Leaderboard, Question,
+    Score, TestSession, User, UserAnswer, UserTestParticipation,
 )
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
-import config
-import random
 
 logger = logging.getLogger(__name__)
 
@@ -53,30 +37,34 @@ TOTAL_TEST_QUESTIONS = 90
 
 class TestService:
 
-    # ─────────────────────────────────────────────────────────────
-    # TestSession
-    # ─────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────────
+    # SESSION
+    # ──────────────────────────────────────────────────────────────────────────
+
     @staticmethod
     def get_or_create_test_session() -> TestSession:
+        """Bugungi aktiv TestSession ni oladi, yo'q bo'lsa yaratadi."""
         db = Session()
         today = datetime.utcnow().date()
+
         test_session = db.query(TestSession).filter(
             func.date(TestSession.exam_date) == today,
-            TestSession.status == 'active'
+            TestSession.status == "active",
         ).first()
 
         if not test_session:
             admin = db.query(Admin).first()
             if not admin:
-                admin = Admin(telegram_id=0, role='super_admin')
+                admin = Admin(telegram_id=0, role="super_admin")
                 db.add(admin)
                 db.flush()
+
             test_session = TestSession(
                 admin_id=admin.id,
                 exam_date=datetime.utcnow(),
                 start_time=datetime.utcnow(),
                 duration_minutes=config.TEST_DURATION_MINUTES,
-                status='active'
+                status="active",
             )
             db.add(test_session)
             db.commit()
@@ -90,36 +78,44 @@ class TestService:
         finally:
             db2.close()
 
-    # ─────────────────────────────────────────────────────────────
-    # Participation
-    # ─────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────────
+    # PARTICIPATION
+    # ──────────────────────────────────────────────────────────────────────────
+
     @staticmethod
     def create_participation(user_id: int, direction_id: str) -> Optional[UserTestParticipation]:
-        """Kunlik cheklov: har user kuniga faqat 1 ta test."""
+        """
+        Yangi participation yaratadi.
+        Kunlik cheklov: har user kuniga faqat 1 ta test yecha oladi.
+        Limit oshsa — None qaytaradi.
+        """
         db = Session()
         try:
             today = datetime.utcnow().date()
-            existing_today = db.query(UserTestParticipation).filter(
+            already_today = db.query(UserTestParticipation).filter(
                 UserTestParticipation.user_id == user_id,
                 func.date(UserTestParticipation.started_at) == today,
-                UserTestParticipation.status.in_(['active', 'completed'])
+                UserTestParticipation.status.in_(["active", "completed"]),
             ).first()
-            if existing_today:
+
+            if already_today:
                 return None
 
             test_session = TestService.get_or_create_test_session()
             deadline = datetime.utcnow() + timedelta(minutes=config.TEST_DURATION_MINUTES)
-            participation = UserTestParticipation(
+
+            p = UserTestParticipation(
                 user_id=user_id,
                 test_session_id=test_session.id,
                 direction_id=direction_id,
-                status='active',
+                status="active",
                 started_at=datetime.utcnow(),
                 deadline_at=deadline,
             )
-            db.add(participation)
+            db.add(p)
             db.commit()
-            p_id = participation.id
+            p_id = p.id
+
         except Exception:
             db.rollback()
             raise
@@ -136,15 +132,16 @@ class TestService:
 
     @staticmethod
     def get_active_participation(user_id: int) -> Optional[UserTestParticipation]:
-        """Faqat vaqti o'tmagan aktiv participation."""
+        """Vaqti hali o'tmagan aktiv participation ni qaytaradi."""
         db = Session()
         try:
             now = datetime.utcnow()
             p = db.query(UserTestParticipation).filter(
                 UserTestParticipation.user_id == user_id,
-                UserTestParticipation.status == 'active',
-                UserTestParticipation.deadline_at > now
+                UserTestParticipation.status == "active",
+                UserTestParticipation.deadline_at > now,
             ).order_by(UserTestParticipation.started_at.desc()).first()
+
             if p is None:
                 return None
             p_id = p.id
@@ -162,6 +159,7 @@ class TestService:
     @staticmethod
     def save_snapshot(participation_id: int, questions: list,
                       current_index: int, answers: dict) -> None:
+        """Test jarayonida vaqti-vaqti bilan holat saqlanadi (crash-recovery)."""
         db = Session()
         try:
             p = db.query(UserTestParticipation).filter(
@@ -179,6 +177,7 @@ class TestService:
 
     @staticmethod
     def load_snapshot(participation_id: int) -> Optional[Dict[str, Any]]:
+        """Saqlangan snapshot ni qaytaradi. Yo'q bo'lsa — None."""
         db = Session()
         try:
             p = db.query(UserTestParticipation).filter(
@@ -187,23 +186,27 @@ class TestService:
             if not p or not p.snapshot_questions:
                 return None
             return {
-                'participation_id':      p.id,
-                'test_session_id':       p.test_session_id,
-                'questions':             p.snapshot_questions,
-                'current_question_index': p.snapshot_current_index or 0,
-                'answers':               p.snapshot_answers or {},
-                'deadline_at':           p.deadline_at,
+                "participation_id":       p.id,
+                "test_session_id":        p.test_session_id,
+                "questions":              p.snapshot_questions,
+                "current_question_index": p.snapshot_current_index or 0,
+                "answers":                p.snapshot_answers or {},
+                "deadline_at":            p.deadline_at,
             }
         finally:
             db.close()
 
-    # ─────────────────────────────────────────────────────────────
-    # Questions
-    # ─────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────────
+    # QUESTIONS
+    # ──────────────────────────────────────────────────────────────────────────
+
     @staticmethod
     def get_test_questions(direction_id: str) -> List[Dict[str, Any]]:
         """
-        Guruhlar tartibi: Matematika → Ona tili → Tarix → 1-fan → 2-fan
+        90 ta savol qaytaradi — guruhlar tartibi:
+          Matematika (10) → Ona tili (10) → Tarix (10)
+          → 1-asosiy fan (30) → 2-asosiy fan (30)
+
         Har guruh ichida savollar va variantlar random aralashtiriladi.
         """
         db = Session()
@@ -211,98 +214,114 @@ class TestService:
         if not direction:
             db.close()
             return []
+
         subj1_id   = direction.subject1_id
         subj2_id   = direction.subject2_id
         subj1_name = direction.subject1.name_uz if direction.subject1 else f"Fan-{subj1_id}"
         subj2_name = direction.subject2.name_uz if direction.subject2 else f"Fan-{subj2_id}"
         db.close()
 
-        def _fetch_shuffled(subject_id: int, count: int) -> List[Dict]:
-            db2 = Session()
-            try:
-                rows = db2.query(Question).filter(
-                    Question.subject_id == subject_id
-                ).all()
-            finally:
-                db2.close()
-
-            random.shuffle(rows)
-            selected = rows[:count]
-            result = []
-            for q in selected:
-                correct_text = {
-                    'A': q.option_a, 'B': q.option_b,
-                    'C': q.option_c, 'D': q.option_d,
-                }.get(q.correct_answer, q.option_a)
-                options = [
-                    ('A', q.option_a), ('B', q.option_b),
-                    ('C', q.option_c), ('D', q.option_d),
-                ]
-                random.shuffle(options)
-                new_correct = 'A'
-                for ltr, (_, txt) in zip('ABCD', options):
-                    if txt == correct_text:
-                        new_correct = ltr
-                        break
-                result.append({
-                    'id':             q.id,
-                    'text_uz':        q.text_uz,
-                    'option_a':       options[0][1],
-                    'option_b':       options[1][1],
-                    'option_c':       options[2][1],
-                    'option_d':       options[3][1],
-                    'correct_answer': new_correct,
-                    'subject_id':     q.subject_id,
-                })
-            return result
-
         groups = [
-            {'label': 'Majburiy — Matematika',
-             'subject_id': 1, 'count': config.MANDATORY_QUESTIONS_PER_SUBJECT},
-            {'label': 'Majburiy — Ona tili',
-             'subject_id': 6, 'count': config.MANDATORY_QUESTIONS_PER_SUBJECT},
-            {'label': 'Majburiy — Tarix',
-             'subject_id': 5, 'count': config.MANDATORY_QUESTIONS_PER_SUBJECT},
-            {'label': f'Asosiy (1-fan) — {subj1_name}',
-             'subject_id': subj1_id, 'count': config.SPECIALIZED_QUESTIONS_PER_SUBJECT},
-            {'label': f'Asosiy (2-fan) — {subj2_name}',
-             'subject_id': subj2_id, 'count': config.SPECIALIZED_QUESTIONS_PER_SUBJECT},
+            {"label": "Majburiy — Matematika", "subject_id": 1,
+             "count": config.MANDATORY_QUESTIONS_PER_SUBJECT},
+            {"label": "Majburiy — Ona tili",   "subject_id": 6,
+             "count": config.MANDATORY_QUESTIONS_PER_SUBJECT},
+            {"label": "Majburiy — Tarix",       "subject_id": 5,
+             "count": config.MANDATORY_QUESTIONS_PER_SUBJECT},
+            {"label": f"Asosiy (1-fan) — {subj1_name}", "subject_id": subj1_id,
+             "count": config.SPECIALIZED_QUESTIONS_PER_SUBJECT},
+            {"label": f"Asosiy (2-fan) — {subj2_name}", "subject_id": subj2_id,
+             "count": config.SPECIALIZED_QUESTIONS_PER_SUBJECT},
         ]
 
-        ordered: List[Dict] = []
+        result: List[Dict] = []
         for grp in groups:
-            qs = _fetch_shuffled(grp['subject_id'], grp['count'])
-            for q in qs:
-                q['group_label'] = grp['label']
-            ordered.extend(qs)
-        return ordered[:TOTAL_TEST_QUESTIONS]
+            questions = TestService._fetch_shuffled(grp["subject_id"], grp["count"])
+            for q in questions:
+                q["group_label"] = grp["label"]
+            result.extend(questions)
 
-    # ─────────────────────────────────────────────────────────────
-    # Answers
-    # ─────────────────────────────────────────────────────────────
+        return result[:TOTAL_TEST_QUESTIONS]
+
+    @staticmethod
+    def _fetch_shuffled(subject_id: int, count: int) -> List[Dict]:
+        """
+        Berilgan fandan `count` ta savol oladi, random aralashtirib,
+        variantlar tartibini ham random qiladi (to'g'ri javob kuzatiladi).
+        """
+        db = Session()
+        try:
+            rows = db.query(Question).filter(Question.subject_id == subject_id).all()
+        finally:
+            db.close()
+
+        random.shuffle(rows)
+        result = []
+
+        for q in rows[:count]:
+            correct_text = {
+                "A": q.option_a, "B": q.option_b,
+                "C": q.option_c, "D": q.option_d,
+            }.get(q.correct_answer, q.option_a)
+
+            options = [
+                ("A", q.option_a), ("B", q.option_b),
+                ("C", q.option_c), ("D", q.option_d),
+            ]
+            random.shuffle(options)
+
+            new_correct = "A"
+            for letter, (_, text) in zip("ABCD", options):
+                if text == correct_text:
+                    new_correct = letter
+                    break
+
+            result.append({
+                "id":             q.id,
+                "text_uz":        q.text_uz,
+                "option_a":       options[0][1],
+                "option_b":       options[1][1],
+                "option_c":       options[2][1],
+                "option_d":       options[3][1],
+                "correct_answer": new_correct,
+                "subject_id":     q.subject_id,
+            })
+
+        return result
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # ANSWERS
+    # ──────────────────────────────────────────────────────────────────────────
+
     @staticmethod
     def save_answer(participation_id: int, user_id: int,
                     test_session_id: int, question_id: int,
                     selected_answer: str) -> bool:
+        """
+        Javobni saqlaydi. Bir xil savol uchun takroriy yozuv bo'lmaydi
+        (UniqueConstraint himoyasi + oldindan tekshiruv).
+        """
         db = Session()
         try:
             existing = db.query(UserAnswer).filter(
                 UserAnswer.participation_id == participation_id,
-                UserAnswer.question_id == question_id
+                UserAnswer.question_id == question_id,
             ).first()
             if existing:
                 return True
+
             question = db.query(Question).filter(Question.id == question_id).first()
             if not question:
                 return False
-            is_correct = (selected_answer == question.correct_answer) if selected_answer else False
+
+            is_correct = bool(selected_answer and selected_answer == question.correct_answer)
             db.add(UserAnswer(
                 user_id=user_id,
                 test_session_id=test_session_id,
                 participation_id=participation_id,
                 question_id=question_id,
                 selected_answer=selected_answer,
-                is_correct=is_correct
+                is_correct=is_correct,
             ))
             db.commit()
             return True
@@ -312,12 +331,18 @@ class TestService:
         finally:
             db.close()
 
-    # ─────────────────────────────────────────────────────────────
-    # Score hisoblash
-    # ─────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────────
+    # SCORING  (ichki hisoblash)
+    # ──────────────────────────────────────────────────────────────────────────
+
     @staticmethod
     def calculate_score(participation_id: int) -> float:
-        """DTM ball tizimi bo'yicha hisoblash."""
+        """
+        DTM ball tizimi:
+          - Majburiy fanlar (Matematika/Tarix/Ona tili): MANDATORY_POINTS_PER_QUESTION
+          - 1-asosiy fan: SPECIALIZED_HIGH_POINTS
+          - 2-asosiy fan: SPECIALIZED_LOW_POINTS
+        """
         db = Session()
         try:
             participation = db.query(UserTestParticipation).filter(
@@ -325,107 +350,99 @@ class TestService:
             ).first()
             if not participation:
                 return 0.0
+
             direction = db.query(Direction).filter(
                 Direction.id == participation.direction_id
             ).first()
             if not direction:
                 return 0.0
 
-            answers = db.query(UserAnswer).filter(
+            correct_answers = db.query(UserAnswer).filter(
                 UserAnswer.participation_id == participation_id,
-                UserAnswer.is_correct.is_(True)
+                UserAnswer.is_correct.is_(True),
             ).all()
 
-            total_score = 0.0
-            for answer in answers:
-                question = db.query(Question).filter(
-                    Question.id == answer.question_id
-                ).first()
-                if not question:
+            total = 0.0
+            for ans in correct_answers:
+                q = db.query(Question).filter(Question.id == ans.question_id).first()
+                if not q:
                     continue
-                if question.subject_id in config.MANDATORY_SUBJECT_IDS:
-                    total_score += config.MANDATORY_POINTS_PER_QUESTION
-                elif question.subject_id == direction.subject1_id:
-                    total_score += config.SPECIALIZED_HIGH_POINTS
-                elif question.subject_id == direction.subject2_id:
-                    total_score += config.SPECIALIZED_LOW_POINTS
-            return round(total_score, 2)
+                if q.subject_id in config.MANDATORY_SUBJECT_IDS:
+                    total += config.MANDATORY_POINTS_PER_QUESTION
+                elif q.subject_id == direction.subject1_id:
+                    total += config.SPECIALIZED_HIGH_POINTS
+                elif q.subject_id == direction.subject2_id:
+                    total += config.SPECIALIZED_LOW_POINTS
+
+            return round(total, 2)
         finally:
             db.close()
 
-    # ─────────────────────────────────────────────────────────────
-    # Test yakunlash — ASOSIY FUNKSIYA
-    # ─────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────────
+    # COMPLETION  (asosiy funksiya)
+    # ──────────────────────────────────────────────────────────────────────────
+
     @staticmethod
     def complete_test(participation_id: int) -> Optional[Dict[str, Any]]:
         """
-        Testni yakunlaydi. Quyidagi tartibda ishlaydi:
-          1. Participation 'completed' ga o'tkaziladi
-          2. score, correct_count, attempted_count hisoblanadi
-             - total_questions = har doim 90
-             - attempted_count = javob berilgan savollar (skip/unanswered hisoblanmaydi)
-             - Foiz = correct_count / 90 * 100
-          3. Bu user+direction uchun oldingi NON-ARCHIVED scorlar arxivlanadi
+        Testni yakunlaydi. Qadamlar:
+          1. participation → 'completed' + snapshot tozalanadi
+          2. score / correct_count / attempted_count hisoblanadi
+          3. Bir direction bo'yicha oldingi non-archived score arxivlanadi
           4. Yangi Score yaratiladi (is_archived=False)
-          5. Leaderboard qayta quriladi (faqat non-archived, per user best score)
-          6. Snapshot tozalanadi
+          5. Leaderboard qayta quriladi (alohida session)
 
-        Agar allaqachon 'completed' bo'lsa — mavjud natija qaytariladi.
+        Agar allaqachon 'completed' — mavjud natija qaytariladi.
         """
         db = Session()
         try:
-            participation = db.query(UserTestParticipation).filter(
+            p = db.query(UserTestParticipation).filter(
                 UserTestParticipation.id == participation_id
             ).first()
-            if not participation:
+            if not p:
                 return None
 
-            # Allaqachon tugallangan — mavjud score qaytariladi
-            if participation.status == 'completed':
-                score_obj = db.query(Score).filter(
+            # Takroriy chaqiruv himoyasi
+            if p.status == "completed":
+                existing = db.query(Score).filter(
                     Score.participation_id == participation_id
                 ).first()
-                if score_obj:
-                    pct = round(score_obj.correct_count / TOTAL_TEST_QUESTIONS * 100, 1)
+                if existing:
+                    pct = round(existing.correct_count / TOTAL_TEST_QUESTIONS * 100, 1)
                     return {
-                        'score':           score_obj.score,
-                        'correct_count':   score_obj.correct_count,
-                        'attempted_count': score_obj.attempted_count or 0,
-                        'total_questions': TOTAL_TEST_QUESTIONS,
-                        'percentage':      pct,
+                        "score":           existing.score,
+                        "correct_count":   existing.correct_count,
+                        "attempted_count": existing.attempted_count or 0,
+                        "total_questions": TOTAL_TEST_QUESTIONS,
+                        "percentage":      pct,
                     }
                 return None
 
-            # Participation ni yakunlaymiz
-            participation.status       = 'completed'
-            participation.completed_at = datetime.utcnow()
-            # Snapshot tozalash
-            participation.snapshot_questions     = None
-            participation.snapshot_current_index = 0
-            participation.snapshot_answers       = None
+            # 1. Participation yakunlash + snapshot tozalash
+            p.status                   = "completed"
+            p.completed_at             = datetime.utcnow()
+            p.snapshot_questions       = None
+            p.snapshot_current_index   = 0
+            p.snapshot_answers         = None
             db.commit()
 
-            # Ball hisoblash
+            # 2. Natijalarni hisoblash
             score_val = TestService.calculate_score(participation_id)
 
-            # To'g'ri javoblar
             correct_count = db.query(UserAnswer).filter(
                 UserAnswer.participation_id == participation_id,
-                UserAnswer.is_correct.is_(True)
+                UserAnswer.is_correct.is_(True),
             ).count()
 
-            # Javob berilgan savollar (skip va unanswered hisoblanmaydi)
-            # save_answer faqat A/B/C/D da chaqiriladi, skip da emas
             attempted_count = db.query(UserAnswer).filter(
-                UserAnswer.participation_id == participation_id
+                UserAnswer.participation_id == participation_id,
             ).count()
 
-            user_id      = participation.user_id
-            direction_id = participation.direction_id
-            ts_id        = participation.test_session_id
+            user_id      = p.user_id
+            direction_id = p.direction_id
+            ts_id        = p.test_session_id
 
-            # Bu user+direction uchun oldingi non-archived scorlarni arxivlaymiz
-            # (yangi score yaratilishidan OLDIN)
+            # 3. Bu direction bo'yicha oldingi non-archived scorlarni arxivlash
             old_scores = (
                 db.query(Score)
                 .join(UserTestParticipation,
@@ -434,15 +451,15 @@ class TestService:
                     Score.user_id == user_id,
                     UserTestParticipation.direction_id == direction_id,
                     Score.is_archived == False,
-                    Score.participation_id != participation_id
+                    Score.participation_id != participation_id,
                 )
                 .all()
             )
-            for old_s in old_scores:
-                old_s.is_archived = True
+            for old in old_scores:
+                old.is_archived = True
             db.commit()
 
-            # Yangi Score yaratish
+            # 4. Yangi score
             new_score = Score(
                 user_id=user_id,
                 participation_id=participation_id,
@@ -462,7 +479,7 @@ class TestService:
         finally:
             db.close()
 
-        # Leaderboard qayta quriladi (alohida session)
+        # 5. Leaderboard rebuild (alohida session)
         try:
             TestService._rebuild_leaderboard_for_direction(ts_id, direction_id)
         except Exception as e:
@@ -470,70 +487,70 @@ class TestService:
 
         pct = round(correct_count / TOTAL_TEST_QUESTIONS * 100, 1)
         return {
-            'score':           score_val,
-            'correct_count':   correct_count,
-            'attempted_count': attempted_count,
-            'total_questions': TOTAL_TEST_QUESTIONS,
-            'percentage':      pct,
+            "score":           score_val,
+            "correct_count":   correct_count,
+            "attempted_count": attempted_count,
+            "total_questions": TOTAL_TEST_QUESTIONS,
+            "percentage":      pct,
         }
 
-    # ─────────────────────────────────────────────────────────────
-    # Auto-finish (scheduler)
-    # ─────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────────
+    # SCHEDULER SUPPORT
+    # ──────────────────────────────────────────────────────────────────────────
+
     @staticmethod
     def get_expired_participations() -> List[Tuple[int, int]]:
-        """Vaqti o'tgan, hali active bo'lgan participationlar."""
+        """Vaqti o'tgan, hali 'active' bo'lgan participationlar [(id, user_id)]."""
         db = Session()
         try:
             now = datetime.utcnow()
             expired = db.query(UserTestParticipation).filter(
-                UserTestParticipation.status == 'active',
-                UserTestParticipation.deadline_at <= now
+                UserTestParticipation.status == "active",
+                UserTestParticipation.deadline_at <= now,
             ).all()
             return [(p.id, p.user_id) for p in expired]
         finally:
             db.close()
 
-    # ─────────────────────────────────────────────────────────────
-    # Leaderboard — DELETE + RECREATE (duplikatlardan himoya)
-    # ─────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────────
+    # LEADERBOARD BUILD  (delete + recreate, duplikatlardan himoya)
+    # ──────────────────────────────────────────────────────────────────────────
+
     @staticmethod
     def _rebuild_leaderboard_for_direction(test_session_id: int, direction_id: str) -> None:
         """
-        Berilgan direction uchun barcha periodlar bo'yicha leaderboard ni
-        to'liq qayta quradi.
+        Berilgan direction uchun barcha periodlar (daily / weekly / all_time)
+        bo'yicha leaderboard ni to'liq qayta quradi.
 
-        Algoritm:
-          1. O'sha direction+period+vaqt oynasidagi barcha Leaderboard yozuvlarini o'chir
-          2. Faqat non-archived scorlardan, har user uchun ENG YUQORI ball ni ol
-          3. Rank bo'yicha tartiblab qayta yoz
-
-        Bu DELETE+INSERT yondashuvi duplikatlarni mutlaqo yo'q qiladi.
+        Algoritm: DELETE → INSERT (duplikat bo'lishi mumkin emas).
+        Faqat is_archived=False scorlar hisobga olinadi.
+        Har user uchun ENG YUQORI ball tanlanadi.
         """
         db = Session()
         try:
             now        = datetime.utcnow()
             today      = now.date()
-            week_start = datetime.combine(today - timedelta(days=today.weekday()), datetime.min.time())
+            week_start = datetime.combine(
+                today - timedelta(days=today.weekday()), datetime.min.time()
+            )
 
-            for period in ('daily', 'weekly', 'all_time'):
-                # ── Mavjud yozuvlarni o'chirish ──────────────────────────────
+            for period in ("daily", "weekly", "all_time"):
+                # ── 1. O'chirish ────────────────────────────────────────────
                 del_q = db.query(Leaderboard).filter(
                     Leaderboard.direction_id == direction_id,
-                    Leaderboard.period == period
+                    Leaderboard.period == period,
                 )
-                if period == 'daily':
+                if period == "daily":
                     del_q = del_q.filter(func.date(Leaderboard.timestamp) == today)
-                elif period == 'weekly':
+                elif period == "weekly":
                     del_q = del_q.filter(Leaderboard.timestamp >= week_start)
-                # all_time — hamma yozuvlar o'chiriladi
 
                 del_q.delete(synchronize_session=False)
                 db.flush()
 
-                # ── Har user uchun eng yaxshi non-archived score ─────────────
+                # ── 2. Har user uchun eng yaxshi non-archived score ─────────
                 best_q = (
-                    db.query(Score.user_id, func.max(Score.score).label('best'))
+                    db.query(Score.user_id, func.max(Score.score).label("best"))
                     .join(UserTestParticipation,
                           Score.participation_id == UserTestParticipation.id)
                     .join(User, Score.user_id == User.id)
@@ -542,11 +559,11 @@ class TestService:
                         Score.is_archived == False,
                     )
                 )
-                if period == 'daily':
+                if period == "daily":
                     best_q = best_q.filter(
                         func.date(UserTestParticipation.completed_at) == today
                     )
-                elif period == 'weekly':
+                elif period == "weekly":
                     best_q = best_q.filter(
                         UserTestParticipation.completed_at >= week_start
                     )
@@ -558,7 +575,7 @@ class TestService:
                     .all()
                 )
 
-                # ── Yangi Leaderboard yozuvlari ──────────────────────────────
+                # ── 3. Yangi yozuvlar ───────────────────────────────────────
                 for rank, (uid, best_score) in enumerate(user_bests, 1):
                     db.add(Leaderboard(
                         test_session_id=test_session_id,
@@ -571,28 +588,25 @@ class TestService:
                     ))
 
             db.commit()
-            logger.debug(
-                "Leaderboard rebuilt: direction=%s, periods=3", direction_id
-            )
+            logger.debug("Leaderboard rebuilt: direction=%s", direction_id)
+
         except Exception as e:
             db.rollback()
             logger.error("_rebuild_leaderboard_for_direction xato: %s", e)
         finally:
             db.close()
 
-    # ─────────────────────────────────────────────────────────────
-    # Leaderboard so'rovlari
-    # ─────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────────
+    # LEADERBOARD READ
+    # ──────────────────────────────────────────────────────────────────────────
+
     @staticmethod
     def get_direction_leaderboard(
         direction_id: str,
-        period: str = 'all_time',
-        limit: int = 10
+        period: str = "all_time",
+        limit: int = 10,
     ) -> List[Dict[str, Any]]:
-        """
-        Direction + period bo'yicha reyting.
-        Faqat non-archived scorlar (arxivlanganlar ko'rinmaydi).
-        """
+        """Direction + period bo'yicha reyting. Faqat non-archived scorlar."""
         db = Session()
         try:
             today      = datetime.utcnow().date()
@@ -610,36 +624,31 @@ class TestService:
                 .options(joinedload(Leaderboard.user))
             )
 
-            if period == 'daily':
+            if period == "daily":
                 query = query.filter(func.date(Leaderboard.timestamp) == today)
-            elif period == 'weekly':
+            elif period == "weekly":
                 query = query.filter(Leaderboard.timestamp >= week_start)
 
             entries = query.order_by(Leaderboard.rank).limit(limit).all()
 
-            result = []
-            for lb in entries:
-                u = lb.user
-                result.append({
-                    'rank':       lb.rank,
-                    'score':      lb.total_score,
-                    'user_id':    lb.user_id,
-                    'first_name': u.first_name if u else '—',
-                    'last_name':  u.last_name  if u else '',
-                })
-            return result
+            return [
+                {
+                    "rank":       lb.rank,
+                    "score":      lb.total_score,
+                    "user_id":    lb.user_id,
+                    "first_name": lb.user.first_name if lb.user else "—",
+                    "last_name":  lb.user.last_name  if lb.user else "",
+                }
+                for lb in entries
+            ]
         finally:
             db.close()
 
     @staticmethod
     def get_user_direction_rank(user_id: int, direction_id: str) -> int:
-        """
-        Foydalanuvchining yo'nalish ichidagi o'rni.
-        Faqat non-archived scorlar hisobga olinadi.
-        """
+        """Foydalanuvchining yo'nalish ichidagi o'rni (1-dan). Non-archived scorlar."""
         db = Session()
         try:
-            # Foydalanuvchining eng yuqori non-archived bali
             user_best = (
                 db.query(func.max(Score.score))
                 .join(UserTestParticipation,
@@ -652,7 +661,6 @@ class TestService:
                 .scalar()
             ) or 0.0
 
-            # Undan yuqori ball olgan boshqa userlar soni
             better_count = (
                 db.query(func.count(Score.user_id.distinct()))
                 .join(UserTestParticipation,
@@ -673,7 +681,62 @@ class TestService:
             db.close()
 
     @staticmethod
+    def get_user_scores(
+        user_id: int,
+        include_archived: bool = False,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """
+        Foydalanuvchining natijalar tarixi.
+        include_archived=True: arxivlanganlar ham ko'rinadi (shaxsiy sahifa).
+        include_archived=False: faqat joriy natija (reyting uchun).
+
+        OUTER JOIN ishlatiladi — participation_id=NULL bo'lgan eski scorlar ham chiqadi.
+        """
+        db = Session()
+        try:
+            query = (
+                db.query(Score)
+                .outerjoin(
+                    UserTestParticipation,
+                    Score.participation_id == UserTestParticipation.id,
+                )
+                .filter(Score.user_id == user_id)
+            )
+            if not include_archived:
+                query = query.filter(Score.is_archived == False)
+
+            scores = query.order_by(Score.created_at.desc()).limit(limit).all()
+
+            # participation larni batch load qilamiz (session yopilgandan keyin lazy load xato)
+            p_ids = [s.participation_id for s in scores if s.participation_id is not None]
+            participations: Dict[int, UserTestParticipation] = {}
+            if p_ids:
+                for p in db.query(UserTestParticipation).filter(
+                    UserTestParticipation.id.in_(p_ids)
+                ).all():
+                    participations[p.id] = p
+
+            return [
+                {
+                    "score":           s.score,
+                    "correct_count":   s.correct_count,
+                    "attempted_count": s.attempted_count or 0,
+                    "total_questions": TOTAL_TEST_QUESTIONS,
+                    "percentage":      round(s.correct_count / TOTAL_TEST_QUESTIONS * 100, 1),
+                    "is_archived":     s.is_archived,
+                    "created_at":      s.created_at,
+                    "direction_id":    participations[s.participation_id].direction_id
+                                       if s.participation_id else None,
+                }
+                for s in scores
+            ]
+        finally:
+            db.close()
+
+    @staticmethod
     def get_leaderboard(test_session_id: int, limit: int = 10) -> list:
+        """Session bo'yicha leaderboard (admin panel uchun)."""
         db = Session()
         try:
             return (
@@ -683,77 +746,5 @@ class TestService:
                 .limit(limit)
                 .all()
             )
-        finally:
-            db.close()
-
-    # ─────────────────────────────────────────────────────────────
-    # Shaxsiy natijalar — TUZATILDI
-    # ─────────────────────────────────────────────────────────────
-    @staticmethod
-    def get_user_scores(
-        user_id: int,
-        include_archived: bool = False,
-        limit: int = 10
-    ) -> List[Dict[str, Any]]:
-        """
-        Foydalanuvchining natijalarini qaytaradi.
-
-        TUZATILDI:
-          - INNER JOIN → OUTER JOIN: participation_id=NULL bo'lgan
-            eski scorlar ham ko'rinadi, yo'qolmaydi.
-          - s.participation lazy load olib tashlandi: session yopilgandan
-            keyin attribute xatosi bermaslik uchun participation lar
-            alohida IN so'rovda olinadi.
-          - debug print(s.direction_id) olib tashlandi.
-          - attempted_count uchun `or 0` qo'shildi (NULL bo'lishi mumkin).
-
-        include_archived=True: arxivlangan natijalar ham ko'rinadi (shaxsiy sahifa)
-        include_archived=False: faqat hozirgi (reyting uchun)
-        """
-        db = Session()
-        try:
-            query = (
-                db.query(Score)
-                .outerjoin(
-                    UserTestParticipation,
-                    Score.participation_id == UserTestParticipation.id
-                )
-                .filter(Score.user_id == user_id)
-            )
-            if not include_archived:
-                query = query.filter(Score.is_archived == False)
-
-            scores = (
-                query
-                .order_by(Score.created_at.desc())
-                .limit(limit)
-                .all()
-            )
-
-            # participation larni session ichida batch olamiz
-            # (session yopilgandan keyin lazy load qilish xato beradi)
-            p_ids = [s.participation_id for s in scores if s.participation_id is not None]
-            participations: Dict[int, UserTestParticipation] = {}
-            if p_ids:
-                for p in db.query(UserTestParticipation).filter(
-                    UserTestParticipation.id.in_(p_ids)
-                ).all():
-                    participations[p.id] = p
-
-            result = []
-            for s in scores:
-                pct = round(s.correct_count / TOTAL_TEST_QUESTIONS * 100, 1)
-                p = participations.get(s.participation_id) if s.participation_id else None
-                result.append({
-                    'score':           s.score,
-                    'correct_count':   s.correct_count,
-                    'attempted_count': s.attempted_count or 0,
-                    'total_questions': TOTAL_TEST_QUESTIONS,
-                    'percentage':      pct,
-                    'is_archived':     s.is_archived,
-                    'created_at':      s.created_at,
-                    'direction_id':    p.direction_id if p else None,
-                })
-            return result
         finally:
             db.close()

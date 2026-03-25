@@ -1,7 +1,5 @@
-from aiogram import Router, types, F
-from aiogram.filters import Command, StateFilter
-
-from bot.keyboards import get_main_menu_keyboard
+from aiogram import Router, types
+from aiogram.filters import Command
 
 router = Router()
 
@@ -59,7 +57,7 @@ async def cmd_help(message: types.Message):
 #
 # Siz yuborgan xabar: <code>{message.text}</code>
 #
-# <i>Bu bot asosiy buyruqlarni qabul qiladi:</i>
+# <i>Bu testbot asosiy buyruqlarni qabul qiladi:</i>
 # • /start - Boshlash yoki qayta boshlash
 # • /help - Yordam
 # • /profile - Profilingiz

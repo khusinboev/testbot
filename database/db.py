@@ -1,36 +1,46 @@
 """
 database/db.py
 
-TUZATILDI:
-  1. seed_regions_and_districts() — base path xato edi:
-       database/db.py → dirname → database/ → dirname → loyiha ildizi ✅
-  2. StaticPool PostgreSQL bilan mos emas → to'g'ri pool
-"""
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, scoped_session
-import config
+SQLAlchemy engine, session va barcha seed funksiyalar.
 
-engine_kwargs: dict = {
-    'pool_pre_ping': True,
-    'pool_size': 10,
-    'max_overflow': 20,
-    'pool_timeout': 30,
-    'pool_recycle': 1800,
+Seed tartib:
+  init_db() → create_tables → seed_admin → seed_subjects
+             → seed_regions_and_districts → seed_directions
+             → seed_referral_settings
+"""
+
+import os
+
+import config
+from sqlalchemy import create_engine
+from sqlalchemy.orm import scoped_session, sessionmaker
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Engine & Session
+# ══════════════════════════════════════════════════════════════════════════════
+
+_engine_kwargs: dict = {
+    "pool_pre_ping": True,
+    "pool_size":     10,
+    "max_overflow":  20,
+    "pool_timeout":  30,
+    "pool_recycle":  1800,
 }
 
-if config.DATABASE_URL.startswith('sqlite'):
+if config.DATABASE_URL.startswith("sqlite"):
     from sqlalchemy.pool import StaticPool
-    engine_kwargs = {
-        'poolclass': StaticPool,
-        'connect_args': {'check_same_thread': False},
+    _engine_kwargs = {
+        "poolclass":    StaticPool,
+        "connect_args": {"check_same_thread": False},
     }
 
-engine = create_engine(config.DATABASE_URL, **engine_kwargs)
+engine       = create_engine(config.DATABASE_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Session = scoped_session(SessionLocal)
+Session      = scoped_session(SessionLocal)
 
 
 def get_db():
+    """FastAPI / Flask dependency style generator."""
     db = Session()
     try:
         yield db
@@ -38,17 +48,25 @@ def get_db():
         db.close()
 
 
-def create_tables():
+# ══════════════════════════════════════════════════════════════════════════════
+# Table helpers
+# ══════════════════════════════════════════════════════════════════════════════
+
+def create_tables() -> None:
     from .models import Base
     Base.metadata.create_all(bind=engine)
 
 
-def drop_tables():
+def drop_tables() -> None:
     from .models import Base
     Base.metadata.drop_all(bind=engine)
 
 
-def init_db():
+# ══════════════════════════════════════════════════════════════════════════════
+# init_db — barcha seed larni ketma-ket chaqiradi
+# ══════════════════════════════════════════════════════════════════════════════
+
+def init_db() -> None:
     create_tables()
     seed_admin()
     seed_subjects()
@@ -57,45 +75,18 @@ def init_db():
     seed_referral_settings()
 
 
-def seed_admin():
-    """seed_default_admin() ning yangi nomi."""
-    seed_default_admin()
+# ══════════════════════════════════════════════════════════════════════════════
+# Seed: Admin
+# ══════════════════════════════════════════════════════════════════════════════
 
-
-def seed_directions():
-    """seed_directions_from_excel() ning yangi nomi."""
-    seed_directions_from_excel()
-
-
-def seed_referral_settings():
-    """Referral settings (id=1) yo'q bo'lsa yaratadi."""
-    from .models import ReferralSettings
-    db = Session()
-    try:
-        if db.query(ReferralSettings).filter(ReferralSettings.id == 1).first():
-            return
-        db.add(ReferralSettings(
-            id=1,
-            is_enabled=False,
-            required_count=0,
-            reward_message="🎉 Tabriklaymiz! Referal talabi bajarildi!"
-        ))
-        db.commit()
-        print("✅ Referral settings yaratildi")
-    except Exception as e:
-        db.rollback()
-        print(f"❌ Referral settings xato: {e}")
-    finally:
-        db.close()
-
-
-def seed_default_admin():
+def seed_admin() -> None:
     from .models import Admin
+
     db = Session()
     try:
         if db.query(Admin).first():
             return
-        db.add(Admin(telegram_id=0, role='super_admin'))
+        db.add(Admin(telegram_id=0, role="super_admin"))
         db.commit()
         print("✅ Default admin qo'shildi")
     except Exception as e:
@@ -105,30 +96,37 @@ def seed_default_admin():
         db.close()
 
 
-def seed_subjects():
+# ══════════════════════════════════════════════════════════════════════════════
+# Seed: Subjects
+# ══════════════════════════════════════════════════════════════════════════════
+
+_SUBJECTS = [
+    (1,  "Matematika",  "Matematika",  "Математика",      1.1),
+    (2,  "Fizika",      "Fizika",       "Физика",          3.1),
+    (3,  "Kimyo",       "Kimyo",        "Химия",           3.1),
+    (4,  "Biologiya",   "Biologiya",    "Биология",        3.1),
+    (5,  "Tarix",       "Tarix",        "История",         1.1),
+    (6,  "Ona tili",    "Ona tili",     "Родной язык",     1.1),
+    (7,  "Adabiyot",    "Adabiyot",     "Литература",      2.1),
+    (8,  "Geografiya",  "Geografiya",   "География",       2.1),
+    (9,  "Ingliz tili", "Ingliz tili",  "Английский язык", 2.1),
+    (10, "Rus tili",    "Rus tili",     "Русский язык",    2.1),
+]
+
+
+def seed_subjects() -> None:
     from .models import Subject
+
     db = Session()
     try:
         if db.query(Subject).first():
             print("Fanlar allaqachon bor, o'tkazildi")
             return
-        subjects = [
-            (1,  'Matematika',  'Matematika',  'Математика',      1.1),
-            (2,  'Fizika',      'Fizika',       'Физика',          3.1),
-            (3,  'Kimyo',       'Kimyo',        'Химия',           3.1),
-            (4,  'Biologiya',   'Biologiya',    'Биология',        3.1),
-            (5,  'Tarix',       'Tarix',        'История',         1.1),
-            (6,  'Ona tili',    'Ona tili',     'Родной язык',     1.1),
-            (7,  'Adabiyot',    'Adabiyot',     'Литература',      2.1),
-            (8,  'Geografiya',  'Geografiya',   'География',       2.1),
-            (9,  'Ingliz tili', 'Ingliz tili',  'Английский язык', 2.1),
-            (10, 'Rus tili',    'Rus tili',     'Русский язык',    2.1),
-        ]
-        for sid, uz, oz, ru, pts in subjects:
+        for sid, uz, oz, ru, pts in _SUBJECTS:
             db.add(Subject(id=sid, name_uz=uz, name_oz=oz, name_ru=ru,
                            points_per_question=pts))
         db.commit()
-        print(f"✅ {len(subjects)} ta fan qo'shildi")
+        print(f"✅ {len(_SUBJECTS)} ta fan qo'shildi")
     except Exception as e:
         db.rollback()
         print(f"❌ Fan seed xato: {e}")
@@ -136,39 +134,43 @@ def seed_subjects():
         db.close()
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Seed: Regions & Districts  (JSON fayllardan)
+# ══════════════════════════════════════════════════════════════════════════════
+
 def _load_json(filepath: str) -> list:
     import json
-    for enc in ('utf-8', 'utf-8-sig', 'cp1251'):
+
+    for enc in ("utf-8", "utf-8-sig", "cp1251"):
         try:
-            with open(filepath, 'r', encoding=enc) as f:
+            with open(filepath, "r", encoding=enc) as f:
                 return json.load(f)
         except (UnicodeDecodeError, ValueError):
             continue
     raise RuntimeError(f"JSON o'qib bo'lmadi: {filepath}")
 
 
-def seed_regions_and_districts():
-    import os
-    from .models import Region, District
+def seed_regions_and_districts() -> None:
+    from .models import District, Region
+
     db = Session()
     try:
         if db.query(Region).first():
             print("Viloyatlar allaqachon bor, o'tkazildi")
             return
 
-        # TUZATILDI: __file__ = .../database/db.py
-        # dirname(abspath(__file__)) = .../database/
-        # dirname(dirname(...))      = loyiha ildizi  ← TO'G'RI
+        # __file__ = .../database/db.py  →  base = .../database/
         base = os.path.dirname(os.path.abspath(__file__))
 
-        for r in _load_json(os.path.join(base, 'regions.json')):
-            db.add(Region(id=int(r['id']), name_uz=r['name_uz'],
-                          name_oz=r['name_oz'], name_ru=r['name_ru']))
+        for r in _load_json(os.path.join(base, "regions.json")):
+            db.add(Region(id=int(r["id"]), name_uz=r["name_uz"],
+                          name_oz=r["name_oz"], name_ru=r["name_ru"]))
         db.commit()
-        for d in _load_json(os.path.join(base, 'districts.json')):
-            db.add(District(id=int(d['id']), region_id=int(d['region_id']),
-                            name_uz=d['name_uz'], name_oz=d['name_oz'],
-                            name_ru=d['name_ru']))
+
+        for d in _load_json(os.path.join(base, "districts.json")):
+            db.add(District(id=int(d["id"]), region_id=int(d["region_id"]),
+                            name_uz=d["name_uz"], name_oz=d["name_oz"],
+                            name_ru=d["name_ru"]))
         db.commit()
         print("✅ Viloyat va tumanlar qo'shildi")
     except Exception as e:
@@ -178,9 +180,14 @@ def seed_regions_and_districts():
         db.close()
 
 
-def seed_directions_from_excel():
+# ══════════════════════════════════════════════════════════════════════════════
+# Seed: Directions  (Excel fayldan)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def seed_directions() -> None:
     from .models import Direction
     from utils.excel_parser import parse_directions_from_excel
+
     db = Session()
     try:
         if db.query(Direction).first():
@@ -192,13 +199,39 @@ def seed_directions_from_excel():
             return
         for d in directions:
             db.add(Direction(
-                id=d['code'], name_uz=d['name'], name_oz=d['name'], name_ru=d['name'],
-                subject1_id=d['subject1_id'], subject2_id=d['subject2_id'],
+                id=d["code"], name_uz=d["name"], name_oz=d["name"], name_ru=d["name"],
+                subject1_id=d["subject1_id"], subject2_id=d["subject2_id"],
             ))
         db.commit()
         print(f"✅ {len(directions)} ta yo'nalish qo'shildi")
     except Exception as e:
         db.rollback()
         print(f"❌ Yo'nalish seed xato: {e}")
+    finally:
+        db.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Seed: Referral settings
+# ══════════════════════════════════════════════════════════════════════════════
+
+def seed_referral_settings() -> None:
+    from .models import ReferralSettings
+
+    db = Session()
+    try:
+        if db.query(ReferralSettings).filter(ReferralSettings.id == 1).first():
+            return
+        db.add(ReferralSettings(
+            id=1,
+            is_enabled=False,
+            required_count=0,
+            reward_message="🎉 Tabriklaymiz! Referal talabi bajarildi!",
+        ))
+        db.commit()
+        print("✅ Referral settings yaratildi")
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Referral settings xato: {e}")
     finally:
         db.close()

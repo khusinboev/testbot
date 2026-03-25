@@ -25,14 +25,14 @@ YANGI SERVERGA KO'CHIRISH TARTIBI:
     5.  python scripts/manage.py init         # jadvallar + seed
     6.  python scripts/manage.py seed         # savollar
     7.  python scripts/manage.py status       # natijani tekshirish
-    8.  python -m bot.main                    # botni ishga tushirish
+    8.  python -m testbot.main                    # botni ishga tushirish
     9.  python -m admin.app                   # admin panelni ishga tushirish
 
 MAVJUD BAZAGA YANGI KOD DEPLOY QILISH:
     1.  git pull
     2.  pip install -r requirements.txt
     3.  python scripts/manage.py migrate      # yangi jadvallar/ustunlar
-    4.  bot va admin ni qayta ishga tushirish
+    4.  testbot va admin ni qayta ishga tushirish
 
 MISOLLAR:
     python scripts/manage.py check
@@ -103,7 +103,7 @@ def cmd_check():
             print(f"  ✅ Redis — ulanish muvaffaqiyatli")
         except Exception as e:
             print(f"  ⚠️  Redis ulanmadi: {e}")
-            print("      MemoryStorage ishlatiladi (bot restart bo'lsa FSM o'chadi)")
+            print("      MemoryStorage ishlatiladi (testbot restart bo'lsa FSM o'chadi)")
     else:
         print("  ⚠️  REDIS_URL yo'q — MemoryStorage ishlatiladi")
 
