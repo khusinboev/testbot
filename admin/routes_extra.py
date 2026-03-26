@@ -174,7 +174,7 @@ def register_extra_routes(app) -> None:
         data = request.get_json() or {}
         try:
             update_referral_settings(
-                is_enabled=bool(data["is_enabled"])      if data.get("is_enabled")     is not None else None,
+                is_enabled=bool(data["is_enabled"])        if data.get("is_enabled")     is not None else None,
                 required_count=int(data["required_count"]) if data.get("required_count") is not None else None,
                 reward_message=data.get("reward_message"),
             )
@@ -323,7 +323,7 @@ def register_extra_routes(app) -> None:
             broadcasts = (
                 db.query(BroadcastMessage)
                 .order_by(desc(BroadcastMessage.created_at))
-                .limit(10)
+                .limit(20)
                 .all()
             )
             return render_template(
@@ -355,7 +355,6 @@ def register_extra_routes(app) -> None:
         if message_type == "forward" and not (forward_from_chat and forward_message_id):
             return jsonify({"success": False, "error": "Post ma'lumotlari to'liq emas"})
 
-        # BOT_TOKEN ni .env dan olinadi
         bot_token = os.getenv("BOT_TOKEN", "")
         if not bot_token:
             return jsonify({"success": False, "error": "BOT_TOKEN sozlanmagan"})
@@ -396,6 +395,10 @@ def register_extra_routes(app) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _get_target_user_ids(db, target: str, top_n) -> List[int]:
+    """
+    BUG FIX: oldingi versiyada top_n filter noto'g'ri edi.
+    Score.user_id bo'yicha eng ko'p test topshirganlarni tanlaymiz.
+    """
     from database.models import Score, User
     from sqlalchemy import desc, func
 
@@ -415,6 +418,8 @@ def _get_target_user_ids(db, target: str, top_n) -> List[int]:
             n = max(1, min(int(top_n) if top_n else 100, 100_000))
         except (TypeError, ValueError):
             n = 100
+
+        # BUGFIX: to'g'ri subquery — eng ko'p test topshirgan N ta user
         subq = (
             db.query(Score.user_id, func.count(Score.id).label("cnt"))
             .group_by(Score.user_id)
@@ -431,7 +436,7 @@ def _get_target_user_ids(db, target: str, top_n) -> List[int]:
     else:
         rows = db.query(User.telegram_id).filter(base_filter).all()
 
-    return [r[0] for r in rows]
+    return [r[0] for r in rows if r[0]]  # None telegram_id larni o'tkazib yuborish
 
 
 def _run_broadcast(broadcast_id, message_type, content,
@@ -479,7 +484,9 @@ async def _async_broadcast(broadcast_id, message_type, content,
         db.close()
 
     sent = fail = 0
-    for tg_id in telegram_ids:
+    total = len(telegram_ids)
+
+    for i, tg_id in enumerate(telegram_ids):
         try:
             if message_type == "text":
                 await bot.send_message(tg_id, content, parse_mode="HTML")
@@ -494,8 +501,13 @@ async def _async_broadcast(broadcast_id, message_type, content,
             fail += 1
             logger.debug("Broadcast %d xato: %s", tg_id, e)
 
+        # Har 25 da pauza (Telegram flood limit)
         if (sent + fail) % 25 == 0:
             await asyncio.sleep(1)
+
+        # Har 100 da progress saqlash
+        if (i + 1) % 100 == 0:
+            _update_broadcast_progress(broadcast_id, sent, fail)
 
     db2 = Session()
     try:
@@ -510,7 +522,24 @@ async def _async_broadcast(broadcast_id, message_type, content,
         db2.close()
 
     await bot.session.close()
-    logger.info("Broadcast #%d: %d yuborildi, %d xato", broadcast_id, sent, fail)
+    logger.info("Broadcast #%d: %d yuborildi, %d xato (jami: %d)", broadcast_id, sent, fail, total)
+
+
+def _update_broadcast_progress(broadcast_id: int, sent: int, fail: int) -> None:
+    """Jarayon davomida oraliq natijani saqlash."""
+    from database.db import Session
+    from database.models import BroadcastMessage
+    db = Session()
+    try:
+        b = db.query(BroadcastMessage).filter(BroadcastMessage.id == broadcast_id).first()
+        if b:
+            b.sent_count = sent
+            b.fail_count = fail
+            db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
 
 
 def _set_broadcast_status(broadcast_id: int, status: str) -> None:

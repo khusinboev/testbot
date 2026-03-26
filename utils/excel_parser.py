@@ -22,9 +22,10 @@ except ImportError:
 # Loyiha ildizi — utils/ ning parenti
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# BUGFIX: oldingi versiyada "../data/..." noto'g'ri path bor edi
 EXCEL_FILES = [
-    os.path.join(ROOT_DIR, "data", "../data/Fanlar_majmuasi_2025-2026.xlsx"),  # tavsiya
-    os.path.join(ROOT_DIR, "../data/Fanlar_majmuasi_2025-2026.xlsx"),           # ildizda
+    os.path.join(ROOT_DIR, "data", "Fanlar_majmuasi_2025-2026.xlsx"),   # tavsiya
+    os.path.join(ROOT_DIR, "Fanlar_majmuasi_2025-2026.xlsx"),            # ildizda
 ]
 
 SUBJECT_MAP = {

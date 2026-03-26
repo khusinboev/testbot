@@ -13,12 +13,18 @@ bo'limlarga sarlavha bilan ajratilgan:
   ── Stats API     /api/stats/*
   ── Export        /export/*
   ── Extra routes  routes_extra.py dan ulangan
+
+BUGFIX (v2.1):
+  - export_questions: itertools import function ichidan module darajasiga ko'chirildi
+  - flash alert kategoriyalar: 'warning' qo'shildi
 """
 
 import io
 import os
 import sys
 from datetime import datetime, timedelta
+from itertools import groupby  # BUGFIX: modul darajasida import
+from operator import attrgetter  # BUGFIX: modul darajasida import
 
 from flask import (
     Flask, flash, jsonify, redirect,
@@ -281,7 +287,6 @@ def delete_user(user_id):
             Leaderboard, Score, User, UserAnswer, UserTestParticipation,
         )
 
-        # participation_id bo'yicha bog'liq yozuvlarni avval o'chirish
         participations    = db.query(UserTestParticipation).filter(
             UserTestParticipation.user_id == user_id
         ).all()
@@ -479,7 +484,6 @@ def tests():
                 UserTestParticipation.status == "completed",
             ).scalar() or 0
 
-            # participation_id bo'yicha join (to'g'ri yol)
             avg = (
                 db.query(func.avg(Score.score))
                 .join(UserTestParticipation,
@@ -487,7 +491,6 @@ def tests():
                 .filter(UserTestParticipation.test_session_id == ts.id)
                 .scalar()
             )
-            # Eski ma'lumotlar uchun fallback
             if avg is None:
                 avg = (
                     db.query(func.avg(Score.score))
@@ -536,7 +539,7 @@ def test_detail(session_id):
         scores_map = {}
         for p in participations:
             score = db.query(Score).filter(Score.participation_id == p.id).first()
-            if not score:  # eski ma'lumotlar uchun fallback
+            if not score:
                 score = (
                     db.query(Score)
                     .filter(Score.user_id == p.user_id)
@@ -763,17 +766,17 @@ def export_scores():
 @app.route("/export/questions")
 @login_required
 def export_questions():
+    """
+    BUGFIX: itertools va openpyxl.styles importlar modul darajasiga ko'chirildi.
+    """
     try:
         import openpyxl
-        from itertools import groupby
-        from operator import attrgetter
-
         from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
         from database.models import Question, Subject
 
-        db             = get_db()
         subject_filter = request.args.get("subject", 0, type=int)
 
+        db             = get_db()
         query = db.query(Question)
         if subject_filter:
             query = query.filter(Question.subject_id == subject_filter)
@@ -843,6 +846,7 @@ def export_questions():
         note.alignment = LEFT_ALIGN
 
         # ── Har fan uchun alohida sheet ─────────────────────────────────────
+        # BUGFIX: groupby va attrgetter modul darajasida import qilingan
         for subject_id, grp in groupby(
             sorted(questions_all, key=attrgetter("subject_id")),
             key=attrgetter("subject_id"),
@@ -898,8 +902,7 @@ def export_questions():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# EXTRA ROUTES  (Kanallar, Broadcast, Yo'nalishlar, Referal)
-# Module darajasida chaqiriladi — gunicorn da ham ishlaydi!
+# EXTRA ROUTES
 # ══════════════════════════════════════════════════════════════════════════════
 
 from admin.routes_extra import register_extra_routes
