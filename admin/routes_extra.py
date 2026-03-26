@@ -1,7 +1,7 @@
 """
 admin/routes_extra.py
 
-register_extra_routes(app) — admin/app.py tomonidan module darajasida chaqiriladi.
+register_extra_routes(app) — admin/app.py tomonidan chaqiriladi.
 
 Bloklar:
   ── Yo'nalishlar   /directions  /api/directions/<id>/users
@@ -13,6 +13,7 @@ Bloklar:
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import List
 
@@ -39,7 +40,7 @@ def register_extra_routes(app) -> None:
         try:
             page     = request.args.get("page", 1, type=int)
             search   = request.args.get("search", "").strip()
-            sort_by  = request.args.get("sort", "users")   # users | scores | name
+            sort_by  = request.args.get("sort", "users")
             per_page = 25
 
             query = db.query(Direction)
@@ -52,7 +53,6 @@ def register_extra_routes(app) -> None:
             total    = query.count()
             all_dirs = query.all()
 
-            # Har yo'nalish uchun statistika hisoblash
             dir_stats = {}
             for d in all_dirs:
                 user_ids_sq = db.query(User.id).filter(User.direction_id == d.id)
@@ -83,7 +83,6 @@ def register_extra_routes(app) -> None:
                     "best_score":  round(float(best_score), 1) if best_score else 0,
                 }
 
-            # Saralash
             if sort_by == "users":
                 all_dirs.sort(key=lambda d: dir_stats[d.id]["user_count"],  reverse=True)
             elif sort_by == "scores":
@@ -122,7 +121,6 @@ def register_extra_routes(app) -> None:
     @app.route("/api/directions/<direction_id>/users")
     @login_required
     def api_direction_users(direction_id):
-        """Yo'nalish foydalanuvchilari (AJAX)."""
         from database.db import Session
         from database.models import Direction, Score, User
         from sqlalchemy import func
@@ -165,7 +163,6 @@ def register_extra_routes(app) -> None:
     @login_required
     def referral():
         from utils.referral_service import get_referral_settings, get_referral_stats
-
         settings = get_referral_settings()
         stats    = get_referral_stats()
         return render_template("referral.html", settings=settings, stats=stats)
@@ -174,17 +171,12 @@ def register_extra_routes(app) -> None:
     @login_required
     def api_referral_settings():
         from utils.referral_service import update_referral_settings
-
         data = request.get_json() or {}
         try:
-            is_enabled     = data.get("is_enabled")
-            required_count = data.get("required_count")
-            reward_message = data.get("reward_message")
-
             update_referral_settings(
-                is_enabled=bool(is_enabled)           if is_enabled     is not None else None,
-                required_count=int(required_count)    if required_count is not None else None,
-                reward_message=reward_message,
+                is_enabled=bool(data["is_enabled"])      if data.get("is_enabled")     is not None else None,
+                required_count=int(data["required_count"]) if data.get("required_count") is not None else None,
+                reward_message=data.get("reward_message"),
             )
             return jsonify({"success": True})
         except Exception as e:
@@ -194,7 +186,6 @@ def register_extra_routes(app) -> None:
     @login_required
     def api_referral_user(user_id):
         from utils.referral_service import get_user_referral_detail
-
         detail = get_user_referral_detail(user_id)
         for inv in detail.get("invites", []):
             if inv.get("created_at"):
@@ -204,10 +195,8 @@ def register_extra_routes(app) -> None:
     @app.route("/api/referral/reset/<int:user_id>", methods=["POST"])
     @login_required
     def api_referral_reset(user_id):
-        """User ning referal kodini qayta generatsiya qilish."""
         import secrets
         import string
-
         from database.db import Session
         from database.models import ReferralLink
 
@@ -216,7 +205,6 @@ def register_extra_routes(app) -> None:
             link = db.query(ReferralLink).filter(ReferralLink.user_id == user_id).first()
             if not link:
                 return jsonify({"success": False, "error": "Topilmadi"})
-
             alphabet = string.ascii_uppercase + string.digits
             new_code = "ref_" + "".join(secrets.choice(alphabet) for _ in range(8))
             link.code = new_code
@@ -237,7 +225,6 @@ def register_extra_routes(app) -> None:
     def channels():
         from database.db import Session
         from database.models import MandatoryChannel
-
         db = Session()
         try:
             chs = db.query(MandatoryChannel).order_by(
@@ -252,15 +239,12 @@ def register_extra_routes(app) -> None:
     def api_channel_add():
         from database.db import Session
         from database.models import MandatoryChannel
-
         data         = request.get_json() or {}
         channel_id   = (data.get("channel_id")   or "").strip()
         channel_name = (data.get("channel_name") or "").strip()
         invite_link  = (data.get("invite_link")  or "").strip() or None
-
         if not channel_id or not channel_name:
             return jsonify({"success": False, "error": "Kanal ID va nomi majburiy"})
-
         db = Session()
         try:
             existing = db.query(MandatoryChannel).filter(
@@ -268,7 +252,6 @@ def register_extra_routes(app) -> None:
             ).first()
             if existing:
                 return jsonify({"success": False, "error": "Bu kanal allaqachon qo'shilgan"})
-
             db.add(MandatoryChannel(
                 channel_id=channel_id,
                 channel_name=channel_name,
@@ -288,7 +271,6 @@ def register_extra_routes(app) -> None:
     def api_channel_toggle(ch_id):
         from database.db import Session
         from database.models import MandatoryChannel
-
         data = request.get_json() or {}
         db   = Session()
         try:
@@ -309,7 +291,6 @@ def register_extra_routes(app) -> None:
     def api_channel_delete(ch_id):
         from database.db import Session
         from database.models import MandatoryChannel
-
         db = Session()
         try:
             db.query(MandatoryChannel).filter(MandatoryChannel.id == ch_id).delete()
@@ -358,7 +339,6 @@ def register_extra_routes(app) -> None:
     @login_required
     def api_broadcast_send():
         import threading
-
         from database.db import Session
         from database.models import BroadcastMessage
 
@@ -374,6 +354,11 @@ def register_extra_routes(app) -> None:
             return jsonify({"success": False, "error": "Xabar matni bo'sh"})
         if message_type == "forward" and not (forward_from_chat and forward_message_id):
             return jsonify({"success": False, "error": "Post ma'lumotlari to'liq emas"})
+
+        # BOT_TOKEN ni .env dan olinadi
+        bot_token = os.getenv("BOT_TOKEN", "")
+        if not bot_token:
+            return jsonify({"success": False, "error": "BOT_TOKEN sozlanmagan"})
 
         db = Session()
         try:
@@ -399,7 +384,7 @@ def register_extra_routes(app) -> None:
         threading.Thread(
             target=_run_broadcast,
             args=(broadcast_id, message_type, content,
-                  forward_from_chat, forward_message_id, telegram_ids),
+                  forward_from_chat, forward_message_id, telegram_ids, bot_token),
             daemon=True,
         ).start()
 
@@ -407,7 +392,7 @@ def register_extra_routes(app) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# BROADCAST HELPERS  (modul darajasida — register_extra_routes tashqarisida)
+# BROADCAST HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _get_target_user_ids(db, target: str, top_n) -> List[int]:
@@ -450,13 +435,15 @@ def _get_target_user_ids(db, target: str, top_n) -> List[int]:
 
 
 def _run_broadcast(broadcast_id, message_type, content,
-                   forward_chat, forward_msg_id, telegram_ids) -> None:
+                   forward_chat, forward_msg_id, telegram_ids,
+                   bot_token: str) -> None:
+    """Bot token parametr sifatida qabul qilinadi — hardcode yo'q."""
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(
             _async_broadcast(broadcast_id, message_type, content,
-                             forward_chat, forward_msg_id, telegram_ids)
+                             forward_chat, forward_msg_id, telegram_ids, bot_token)
         )
     except Exception as e:
         logger.error("Broadcast thread xato: %s", e)
@@ -469,9 +456,8 @@ def _run_broadcast(broadcast_id, message_type, content,
 
 
 async def _async_broadcast(broadcast_id, message_type, content,
-                            forward_chat, forward_msg_id, telegram_ids) -> None:
-    import os
-
+                            forward_chat, forward_msg_id, telegram_ids,
+                            bot_token: str) -> None:
     from aiogram import Bot
     from aiogram.client.default import DefaultBotProperties
     from aiogram.enums import ParseMode
@@ -479,7 +465,7 @@ async def _async_broadcast(broadcast_id, message_type, content,
     from database.models import BroadcastMessage
 
     bot = Bot(
-        token=os.getenv("BOT_TOKEN"),
+        token=bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
 
@@ -530,7 +516,6 @@ async def _async_broadcast(broadcast_id, message_type, content,
 def _set_broadcast_status(broadcast_id: int, status: str) -> None:
     from database.db import Session
     from database.models import BroadcastMessage
-
     db = Session()
     try:
         b = db.query(BroadcastMessage).filter(BroadcastMessage.id == broadcast_id).first()

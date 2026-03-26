@@ -1,15 +1,14 @@
 """
 utils/excel_parser.py — Fanlar majmuasi Excel faylini o'qish
 
-Fayl qidiriladigan joylar (tartib bo'yicha):
+Fayl qidiriladi (tartib bo'yicha):
   1. data/Fanlar_majmuasi_2025-2026.xlsx   ← tavsiya etilgan joy
   2. Fanlar_majmuasi_2025-2026.xlsx         ← loyiha ildizida
 
-TUZATILDI:
-  ROOT_DIR — utils/ ning parenti emas, balki loyiha ILDIZI:
-    __file__ = .../utils/excel_parser.py
-    dirname(__file__)        = .../utils/
-    dirname(dirname(...))    = loyiha ildizi  ✅
+ROOT_DIR = loyiha ildizi (utils/ ning parenti)
+  __file__             = .../utils/excel_parser.py
+  dirname(__file__)    = .../utils/
+  dirname(dirname())   = loyiha ildizi  ✅
 """
 import os
 import re
@@ -20,11 +19,12 @@ try:
 except ImportError:
     raise ImportError("openpyxl o'rnatilmagan. pip install openpyxl")
 
-# Loyiha ildizi (utils/ ning parenti)
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Loyiha ildizi — utils/ ning parenti
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 EXCEL_FILES = [
-    os.path.join(ROOT_DIR, "Fanlar_majmuasi_2025-2026.xlsx"),
+    os.path.join(ROOT_DIR, "data", "../data/Fanlar_majmuasi_2025-2026.xlsx"),  # tavsiya
+    os.path.join(ROOT_DIR, "../data/Fanlar_majmuasi_2025-2026.xlsx"),           # ildizda
 ]
 
 SUBJECT_MAP = {

@@ -2,15 +2,25 @@
 {% block title %}Foydalanuvchilar — DTM Admin{% endblock %}
 {% block page_title %}👥 Foydalanuvchilar{% endblock %}
 
+{% block head %}
+<style>
+  @media (max-width: 600px) {
+    .users-filter-row { flex-direction: column !important; align-items: stretch !important; }
+    .users-filter-row .form-control { max-width: 100% !important; }
+    .users-filter-row .filter-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <!-- Filter bar -->
 <div class="card mb-4">
-  <div class="card-body" style="padding:16px">
-    <form method="GET" class="flex gap-3 items-center" style="flex-wrap:wrap">
-      <input type="text" name="search" class="form-control" style="max-width:260px"
+  <div class="card-body" style="padding:14px">
+    <form method="GET" class="flex gap-3 items-center users-filter-row" style="flex-wrap:wrap">
+      <input type="text" name="search" class="form-control" style="max-width:260px;flex:1;min-width:180px"
              placeholder="🔍 Ism, familiya, telefon..." value="{{ search }}">
-      <select name="region" class="form-control" style="max-width:200px">
+      <select name="region" class="form-control" style="max-width:200px;flex:1;min-width:140px">
         <option value="">Barcha viloyatlar</option>
         {% for r in regions %}
         <option value="{{ r.id }}" {% if region_filter|string == r.id|string %}selected{% endif %}>
@@ -18,21 +28,18 @@
         </option>
         {% endfor %}
       </select>
-      <button type="submit" class="btn btn-primary">Filtr</button>
-      {% if search or region_filter %}
-      <a href="{{ url_for('users') }}" class="btn btn-ghost">✕ Tozalash</a>
-      {% endif %}
-      <div style="margin-left:auto" class="flex gap-2">
-        <a href="{{ url_for('export_users') }}" class="btn btn-success btn-sm">
-          📥 Excel export
-        </a>
+      <div class="filter-actions flex gap-2">
+        <button type="submit" class="btn btn-primary">Filtr</button>
+        {% if search or region_filter %}
+        <a href="{{ url_for('users') }}" class="btn btn-ghost">✕</a>
+        {% endif %}
+        <a href="{{ url_for('export_users') }}" class="btn btn-success btn-sm">📥 Excel</a>
       </div>
     </form>
   </div>
 </div>
 
-<!-- Stats row -->
-<div class="flex gap-3 mb-4 text-sm text-muted">
+<div class="flex gap-3 mb-4 text-sm text-muted" style="flex-wrap:wrap">
   <span>Jami: <strong class="text-accent">{{ total }}</strong> ta</span>
   {% if search %}<span>· Qidiruv: «{{ search }}»</span>{% endif %}
 </div>
@@ -43,15 +50,9 @@
     <table>
       <thead>
         <tr>
-          <th>ID</th>
-          <th>F.I.SH</th>
-          <th>Telefon</th>
-          <th>Viloyat / Tuman</th>
-          <th>Yo'nalish</th>
-          <th>Testlar</th>
-          <th>Eng ball</th>
-          <th>Sana</th>
-          <th></th>
+          <th>ID</th><th>F.I.SH</th><th>Telefon</th>
+          <th>Viloyat / Tuman</th><th>Yo'nalish</th>
+          <th>Testlar</th><th>Eng ball</th><th>Sana</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -59,9 +60,7 @@
         {% set stats = user_stats.get(u.id, {}) %}
         <tr>
           <td class="text-muted font-mono text-xs">{{ u.id }}</td>
-          <td>
-            <div class="fw-700">{{ u.first_name }} {{ u.last_name or '' }}</div>
-          </td>
+          <td><div class="fw-700">{{ u.first_name }} {{ u.last_name or '' }}</div></td>
           <td class="font-mono text-sm">{{ u.phone }}</td>
           <td>
             <div>{{ u.region.name_uz if u.region else '—' }}</div>
@@ -70,31 +69,26 @@
           <td>
             {% if u.direction %}
             <span class="truncate text-sm" title="{{ u.direction.name_uz }}">
-              {{ u.direction.name_uz[:30] }}{% if u.direction.name_uz|length > 30 %}…{% endif %}
+              {{ u.direction.name_uz[:28] }}{% if u.direction.name_uz|length > 28 %}…{% endif %}
             </span>
             {% else %}
             <span class="badge badge-orange">Belgilanmagan</span>
             {% endif %}
           </td>
           <td>
-            {% if stats.test_count > 0 %}
-            <span class="badge badge-blue">{{ stats.test_count }}</span>
-            {% else %}
-            <span class="badge badge-gray">0</span>
-            {% endif %}
+            <span class="badge {{ 'badge-blue' if stats.test_count > 0 else 'badge-gray' }}">
+              {{ stats.test_count or 0 }}
+            </span>
           </td>
           <td>
             {% if stats.best_score %}
             <span class="font-mono text-sm text-success">{{ stats.best_score }}</span>
-            {% else %}
-            <span class="text-muted">—</span>
-            {% endif %}
+            {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
           <td class="text-muted text-xs">{{ u.created_at.strftime('%d.%m.%Y') }}</td>
           <td>
             <div class="flex gap-2">
-              <a href="{{ url_for('user_detail', user_id=u.id) }}"
-                 class="btn btn-ghost btn-sm">Ko'rish</a>
+              <a href="{{ url_for('user_detail', user_id=u.id) }}" class="btn btn-ghost btn-sm">Ko'rish</a>
               <button class="btn btn-danger btn-sm"
                       onclick="confirmDelete({{ u.id }}, '{{ u.first_name }} {{ u.last_name or '' }}')">
                 🗑
@@ -114,25 +108,22 @@
   </div>
 </div>
 
-<!-- Pagination -->
 {% if total_pages > 1 %}
 <div class="pagination">
   {% if page > 1 %}
-  <a href="?page={{ page-1 }}&search={{ search }}&region={{ region_filter }}" class="page-btn">← Oldingi</a>
+  <a href="?page={{ page-1 }}&search={{ search }}&region={{ region_filter }}" class="page-btn">←</a>
   {% endif %}
-
   {% for p in range([1, page-2]|max, [total_pages+1, page+3]|min) %}
   <a href="?page={{ p }}&search={{ search }}&region={{ region_filter }}"
      class="page-btn {% if p == page %}active{% endif %}">{{ p }}</a>
   {% endfor %}
-
   {% if page < total_pages %}
-  <a href="?page={{ page+1 }}&search={{ search }}&region={{ region_filter }}" class="page-btn">Keyingi →</a>
+  <a href="?page={{ page+1 }}&search={{ search }}&region={{ region_filter }}" class="page-btn">→</a>
   {% endif %}
 </div>
 {% endif %}
 
-<!-- Delete confirmation modal -->
+<!-- Delete modal -->
 <div class="modal-overlay" id="deleteModal">
   <div class="modal">
     <div class="modal-title">🗑️ Foydalanuvchini o'chirish</div>
@@ -152,19 +143,15 @@
 {% block scripts %}
 <script>
 let deleteId = null;
-
 function confirmDelete(id, name) {
   deleteId = id;
-  document.getElementById('deleteMsg').textContent =
-    `"${name}" foydalanuvchisini o'chirishni tasdiqlaysizmi?`;
+  document.getElementById('deleteMsg').textContent = `"${name}" foydalanuvchisini o'chirishni tasdiqlaysizmi?`;
   document.getElementById('deleteModal').classList.add('open');
 }
-
 function closeModal() {
   document.getElementById('deleteModal').classList.remove('open');
   deleteId = null;
 }
-
 document.getElementById('confirmDeleteBtn').onclick = async () => {
   if (!deleteId) return;
   const res = await fetch(`/api/users/${deleteId}/delete`, { method: 'POST' });
@@ -172,7 +159,6 @@ document.getElementById('confirmDeleteBtn').onclick = async () => {
   if (data.success) location.reload();
   else alert('Xato: ' + data.error);
 };
-
 document.getElementById('deleteModal').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeModal();
 });

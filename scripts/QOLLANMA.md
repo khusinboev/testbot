@@ -95,7 +95,7 @@ pip install -r requirements.txt
 ### 4. Muhit o'zgaruvchilarini sozlash
 
 ```bash
-cp env.example .env
+cp .env.example .env
 nano .env    # yoki istalgan text muharrir
 ```
 

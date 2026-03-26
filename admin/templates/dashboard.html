@@ -4,6 +4,11 @@
 
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  @media (max-width: 768px) {
+    .dash-charts { grid-template-columns: 1fr !important; }
+  }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -37,9 +42,7 @@
 </div>
 
 <!-- Charts + recent -->
-<div class="grid-2 mb-6">
-
-  <!-- Registratsiya grafigi -->
+<div class="grid-2 dash-charts mb-6">
   <div class="card">
     <div class="card-header">
       <span class="card-title">📈 Kunlik registratsiyalar</span>
@@ -50,7 +53,6 @@
     </div>
   </div>
 
-  <!-- Top 5 natija -->
   <div class="card">
     <div class="card-header">
       <span class="card-title">🏆 Top natijalar</span>
@@ -59,12 +61,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr>
-            <th>#</th>
-            <th>F.I.SH</th>
-            <th>Ball</th>
-            <th>To'g'ri</th>
-          </tr>
+          <tr><th>#</th><th>F.I.SH</th><th>Ball</th><th>To'g'ri</th></tr>
         </thead>
         <tbody>
           {% for s in top_scores %}
@@ -101,13 +98,7 @@
   <div class="table-wrap">
     <table>
       <thead>
-        <tr>
-          <th>Ism</th>
-          <th>Telefon</th>
-          <th>Viloyat</th>
-          <th>Sana</th>
-          <th></th>
-        </tr>
+        <tr><th>Ism</th><th>Telefon</th><th>Viloyat</th><th>Sana</th><th></th></tr>
       </thead>
       <tbody>
         {% for u in recent_users %}
@@ -116,9 +107,7 @@
           <td class="font-mono text-sm">{{ u.phone }}</td>
           <td>{{ u.region.name_uz if u.region else '—' }}</td>
           <td class="text-muted text-sm">{{ u.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
-          <td>
-            <a href="{{ url_for('user_detail', user_id=u.id) }}" class="btn btn-ghost btn-sm">Ko'rish</a>
-          </td>
+          <td><a href="{{ url_for('user_detail', user_id=u.id) }}" class="btn btn-ghost btn-sm">Ko'rish</a></td>
         </tr>
         {% else %}
         <tr><td colspan="5" class="text-muted" style="text-align:center;padding:24px">
