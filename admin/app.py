@@ -188,11 +188,17 @@ def users():
 
         query = db.query(User)
         if search:
-            query = query.filter(
-                User.first_name.ilike(f"%{search}%") |
-                User.last_name.ilike(f"%{search}%")  |
-                User.phone.ilike(f"%{search}%")
-            )
+            if search.lstrip('+').isdigit() and len(search) >= 6:
+                query = query.filter(
+                    User.phone.ilike(f"%{search}%") |
+                    (User.telegram_id == int(search.lstrip('+')))
+                )
+            else:
+                query = query.filter(
+                    User.first_name.ilike(f"%{search}%") |
+                    User.last_name.ilike(f"%{search}%")  |
+                    User.phone.ilike(f"%{search}%")
+                )
         if region_filter:
             query = query.filter(User.region_id == region_filter)
 

@@ -108,8 +108,9 @@
           <td>
             <div class="flex gap-2">
               <a href="{{ url_for('user_detail', user_id=u.id) }}" class="btn btn-ghost btn-sm">Ko'rish</a>
-              <button class="btn btn-danger btn-sm"
-                      onclick="confirmDelete({{ u.id }}, '{{ u.first_name }} {{ u.last_name or '' }}')">
+              <button class="btn btn-danger btn-sm del-user-btn"
+                      data-uid="{{ u.id }}"
+                      data-uname="{{ u.first_name }} {{ u.last_name or '' }}">
                 🗑
               </button>
             </div>
@@ -162,7 +163,7 @@
 {% block scripts %}
 <script>
 let deleteId = null;
-function confirmDelete(id, name) {
+function openDeleteModal(id, name) {
   deleteId = id;
   document.getElementById('deleteMsg').textContent = `"${name}" foydalanuvchisini o'chirishni tasdiqlaysizmi?`;
   document.getElementById('deleteModal').classList.add('open');
@@ -171,6 +172,9 @@ function closeModal() {
   document.getElementById('deleteModal').classList.remove('open');
   deleteId = null;
 }
+document.querySelectorAll('.del-user-btn').forEach(btn => {
+  btn.addEventListener('click', () => openDeleteModal(btn.dataset.uid, btn.dataset.uname));
+});
 document.getElementById('confirmDeleteBtn').onclick = async () => {
   if (!deleteId) return;
   const res = await fetch(`/api/users/${deleteId}/delete`, { method: 'POST' });

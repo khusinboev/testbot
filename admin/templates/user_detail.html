@@ -65,8 +65,9 @@
       </table>
 
       <div class="mt-4">
-        <button class="btn btn-danger w-full"
-                onclick="confirmDelete({{ user.id }}, '{{ user.first_name }}')">
+        <button class="btn btn-danger w-full del-user-btn"
+                data-uid="{{ user.id }}"
+                data-uname="{{ user.first_name }} {{ user.last_name or '' }}">
           🗑️ Foydalanuvchini o'chirish
         </button>
       </div>
@@ -184,15 +185,20 @@
 
 {% block scripts %}
 <script>
-function confirmDelete(id, name) {
-  document.getElementById('deleteMsg').textContent = `"${name}" ni o'chirasizmi?`;
-  document.getElementById('deleteModal').classList.add('open');
-  document.getElementById('confirmDeleteBtn').onclick = async () => {
-    const r = await fetch(`/api/users/${id}/delete`, { method: 'POST' });
-    const d = await r.json();
-    if (d.success) window.location.href = '/users';
-    else alert('Xato: ' + d.error);
-  };
+const _delBtn = document.querySelector('.del-user-btn');
+if (_delBtn) {
+  _delBtn.addEventListener('click', () => {
+    const id   = _delBtn.dataset.uid;
+    const name = _delBtn.dataset.uname;
+    document.getElementById('deleteMsg').textContent = `"${name}" ni o'chirasizmi?`;
+    document.getElementById('deleteModal').classList.add('open');
+    document.getElementById('confirmDeleteBtn').onclick = async () => {
+      const r = await fetch(`/api/users/${id}/delete`, { method: 'POST' });
+      const d = await r.json();
+      if (d.success) window.location.href = '/users';
+      else alert('Xato: ' + d.error);
+    };
+  });
 }
 </script>
 {% endblock %}
