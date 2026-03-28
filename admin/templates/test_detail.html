@@ -2,6 +2,14 @@
 {% block title %}Sessiya #{{ session.id }} — DTM Admin{% endblock %}
 {% block page_title %}🧪 Test sessiya #{{ session.id }}{% endblock %}
 
+{% block head %}
+<style>
+  @media (max-width: 768px) {
+    .col-td-dir, .col-td-date { display: none; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="flex gap-3 mb-4">
   <a href="{{ url_for('tests') }}" class="btn btn-ghost btn-sm">← Orqaga</a>
@@ -59,8 +67,8 @@
     <table>
       <thead>
         <tr>
-          <th>#</th><th>F.I.SH</th><th>Yo'nalish</th>
-          <th>Holat</th><th>Ball</th><th>Sana</th>
+          <th>#</th><th>F.I.SH</th><th class="col-td-dir">Yo'nalish</th>
+          <th>Holat</th><th>Ball</th><th class="col-td-date">Sana</th>
         </tr>
       </thead>
       <tbody>
@@ -70,7 +78,7 @@
           <td class="fw-700">
             {% if p.user %}{{ p.user.first_name }} {{ p.user.last_name or '' }}{% else %}—{% endif %}
           </td>
-          <td class="text-sm text-muted">{{ p.direction_id }}</td>
+          <td class="col-td-dir text-sm text-muted">{{ p.direction_id }}</td>
           <td>
             {% if p.status == 'completed' %}<span class="badge badge-green">Tugallangan</span>
             {% elif p.status == 'active' %}<span class="badge badge-orange">Faol</span>
@@ -81,7 +89,7 @@
             {% if sc %}<span class="badge badge-blue font-mono">{{ sc.score }}</span>
             {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
-          <td class="text-muted text-xs">{{ p.joined_at.strftime('%d.%m %H:%M') }}</td>
+          <td class="col-td-date text-muted text-xs">{{ p.joined_at.strftime('%d.%m %H:%M') }}</td>
         </tr>
         {% else %}
         <tr><td colspan="6" style="text-align:center;padding:30px;color:var(--muted)">

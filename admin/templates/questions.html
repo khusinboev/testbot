@@ -86,6 +86,26 @@
   .export-modal-footer {
     display: flex; gap: 12px; margin-top: 8px;
   }
+  /* Export modal — mobil */
+  @media (max-width: 768px) {
+    .export-modal-overlay { align-items: flex-end; padding: 0; }
+    .export-modal {
+      border-radius: 20px 20px 0 0;
+      max-width: 100%; padding: 20px 16px;
+      padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+      max-height: 90vh; overflow-y: auto;
+    }
+    .export-scope-grid { grid-template-columns: 1fr; }
+    .export-modal-footer { flex-direction: column; }
+    .export-modal-footer .btn { width: 100%; justify-content: center; min-height: 44px; }
+  }
+  /* Savollar jadvalida kichik ekranda ko'p ustunlarni yashir */
+  @media (max-width: 768px) {
+    .col-q-id, .col-q-opts { display: none; }
+  }
+  @media (max-width: 480px) {
+    .col-q-subj { display: none; }
+  }
   .export-modal-close {
     position: absolute; top: 16px; right: 18px;
     background: none; border: none;
@@ -141,10 +161,10 @@
 <!-- Filter + actions -->
 <div class="card mb-4">
   <div class="card-body" style="padding:16px">
-    <form method="GET" class="flex gap-3 items-center" style="flex-wrap:wrap">
-      <input type="text" name="search" class="form-control" style="max-width:260px"
+    <form method="GET" class="flex gap-3 items-center filter-row-mobile" style="flex-wrap:wrap">
+      <input type="text" name="search" class="form-control" style="max-width:260px;flex:1;min-width:150px"
              placeholder="🔍 Savol matni..." value="{{ search }}">
-      <select name="subject" class="form-control" style="max-width:180px">
+      <select name="subject" class="form-control" style="max-width:180px;flex:1;min-width:120px">
         <option value="0">Barcha fanlar</option>
         {% for s in subjects %}
         <option value="{{ s.id }}" {% if subject_filter == s.id %}selected{% endif %}>
@@ -191,10 +211,13 @@
     <table>
       <thead>
         <tr>
-          <th>ID</th>
-          <th>Fan</th>
-          <th style="min-width:320px">Savol</th>
-          <th>A</th><th>B</th><th>C</th><th>D</th>
+          <th class="col-q-id">ID</th>
+          <th class="col-q-subj">Fan</th>
+          <th style="min-width:200px">Savol</th>
+          <th class="col-q-opts">A</th>
+          <th class="col-q-opts">B</th>
+          <th class="col-q-opts">C</th>
+          <th class="col-q-opts">D</th>
           <th>Javob</th>
           <th></th>
         </tr>
@@ -202,8 +225,8 @@
       <tbody>
         {% for q in questions %}
         <tr>
-          <td class="text-muted font-mono text-xs">{{ q.id }}</td>
-          <td>
+          <td class="col-q-id text-muted font-mono text-xs">{{ q.id }}</td>
+          <td class="col-q-subj">
             {% set smap = {1:'Matematika',2:'Fizika',3:'Kimyo',4:'Biologiya',
                            5:'Tarix',6:'Ona tili',7:'Adabiyot',8:'Geografiya',
                            9:'Ingliz',10:'Rus'} %}
@@ -213,11 +236,16 @@
             <div style="max-width:340px;white-space:pre-wrap;font-size:13px">
               {{ q.text_uz[:120] }}{% if q.text_uz|length > 120 %}…{% endif %}
             </div>
+            <!-- Mobilda fan nomi savol tagida -->
+            <div class="text-muted text-xs mt-1" style="display:none" id="q-subj-mobile">
+              {% set smap2 = {1:'Mat',2:'Fiz',3:'Kim',4:'Bio',5:'Tar',6:'O.T',7:'Adab',8:'Geo',9:'Ing',10:'Rus'} %}
+              {{ smap2.get(q.subject_id, '') }}
+            </div>
           </td>
-          <td class="text-xs text-muted">{{ q.option_a[:20] }}{% if q.option_a|length > 20 %}…{% endif %}</td>
-          <td class="text-xs text-muted">{{ q.option_b[:20] }}{% if q.option_b|length > 20 %}…{% endif %}</td>
-          <td class="text-xs text-muted">{{ q.option_c[:20] }}{% if q.option_c|length > 20 %}…{% endif %}</td>
-          <td class="text-xs text-muted">{{ q.option_d[:20] }}{% if q.option_d|length > 20 %}…{% endif %}</td>
+          <td class="col-q-opts text-xs text-muted">{{ q.option_a[:20] }}{% if q.option_a|length > 20 %}…{% endif %}</td>
+          <td class="col-q-opts text-xs text-muted">{{ q.option_b[:20] }}{% if q.option_b|length > 20 %}…{% endif %}</td>
+          <td class="col-q-opts text-xs text-muted">{{ q.option_c[:20] }}{% if q.option_c|length > 20 %}…{% endif %}</td>
+          <td class="col-q-opts text-xs text-muted">{{ q.option_d[:20] }}{% if q.option_d|length > 20 %}…{% endif %}</td>
           <td>
             <span class="badge badge-green font-mono">{{ q.correct_answer }}</span>
           </td>

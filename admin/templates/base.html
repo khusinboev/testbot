@@ -613,6 +613,8 @@
        RESPONSIVE — Mobile (≤768px)
     ══════════════════════════════════════════════ */
     @media (max-width: 768px) {
+      :root { --content-p: 12px; }
+
       .sidebar {
         transform: translateX(-100%);
         box-shadow: none; width: 272px;
@@ -625,37 +627,88 @@
       .topbar { padding: 0 12px; }
       .menu-toggle { display: flex; }
       .page-title { font-size: 14px; }
+
       .content {
-        padding: 12px;
-        padding-bottom: calc(var(--mobile-nav-h) + 12px);
+        padding: var(--content-p);
+        padding-bottom: calc(var(--mobile-nav-h) + var(--content-p) + env(safe-area-inset-bottom, 0px));
       }
-      .bottom-nav { display: block; }
+
+      .bottom-nav {
+        display: block;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        height: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom, 0px));
+      }
+
       .grid-2, .grid-3 { grid-template-columns: 1fr; }
       .stats-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
       .stat-card { padding: 14px; }
       .stat-value { font-size: 22px; }
-      .table-wrap { margin: 0 -18px; }
+
+      /* ── Table overflow fix ──────────────────────────
+         Kartani ekran chetlariga cho'zamiz (margin hack emas),
+         table-wrap neg. margin olib tashlanadi.
+      ── */
+      .table-wrap { margin: 0; }
+      .card:has(.table-wrap) {
+        margin-left: calc(-1 * var(--content-p));
+        margin-right: calc(-1 * var(--content-p));
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+      }
+
       .card-body { padding: 14px; }
-      .modal-overlay { align-items: flex-end; padding: 0; }
+
+      /* ── Modal → bottom sheet ── */
+      .modal-overlay {
+        align-items: flex-end;
+        padding: 0;
+      }
       .modal {
         border-radius: 20px 20px 0 0;
-        max-width: 100%; padding: 20px 16px;
+        max-width: 100%;
+        padding: 20px 16px;
+        /* Modal tugmalari bottom-nav orqasida qolmasin */
+        padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
         max-height: 88vh;
+        /* Sürükleme çubuğu */
+        position: relative;
       }
+      .modal::before {
+        content: '';
+        display: block;
+        width: 40px; height: 4px;
+        background: var(--border2);
+        border-radius: 2px;
+        margin: -8px auto 16px;
+      }
+      /* Modal tugmalari touch uchun kattaroq */
+      .modal .btn { min-height: 44px; justify-content: center; }
+
       .badge-live .clock-text { display: none; }
       .btn { padding: 8px 12px; font-size: 12px; }
       /* Hide topbar theme btn on mobile (sidebar has it) */
       .topbar-theme-btn { display: none; }
+
+      /* Filtr qatorlari vertikal */
+      .filter-row-mobile {
+        flex-direction: column !important;
+        align-items: stretch !important;
+      }
+      .filter-row-mobile .form-control { max-width: 100% !important; }
     }
 
     @media (max-width: 480px) {
+      :root { --content-p: 10px; }
       .stats-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
       .stat-card { padding: 12px; }
       .stat-value { font-size: 20px; }
       .stat-icon { font-size: 18px; margin-bottom: 8px; }
       .card-header { padding: 12px 14px; }
-      .content { padding: 10px; padding-bottom: calc(var(--mobile-nav-h) + 10px); }
       .topbar { padding: 0 10px; gap: 8px; }
+      /* Juda kichik ekranda tugmalar to'liq kenglikda */
+      .modal .flex.gap-3 { flex-direction: column; }
+      .modal .flex.gap-3 .btn { width: 100%; }
     }
 
     /* ══════════════════════════════════════════════

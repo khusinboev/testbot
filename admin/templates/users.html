@@ -4,10 +4,23 @@
 
 {% block head %}
 <style>
+  /* Filter bar */
   @media (max-width: 600px) {
     .users-filter-row { flex-direction: column !important; align-items: stretch !important; }
-    .users-filter-row .form-control { max-width: 100% !important; }
+    .users-filter-row .form-control { max-width: 100% !important; width: 100% !important; }
     .users-filter-row .filter-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  }
+  /* Telefonda kam muhim ustunlarni yashir */
+  @media (max-width: 768px) {
+    .col-id, .col-district, .col-tests, .col-date { display: none; }
+    /* Amal tugmalari vertikal joylashsin */
+    td .flex.gap-2 { flex-direction: column; gap: 4px; }
+    td .flex.gap-2 .btn { width: 100%; justify-content: center; }
+  }
+  @media (max-width: 480px) {
+    .col-score { display: none; }
+    .col-name { max-width: 120px; }
+    .col-name div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 110px; }
   }
 </style>
 {% endblock %}
@@ -50,21 +63,27 @@
     <table>
       <thead>
         <tr>
-          <th>ID</th><th>F.I.SH</th><th>Telefon</th>
-          <th>Viloyat / Tuman</th><th>Yo'nalish</th>
-          <th>Testlar</th><th>Eng ball</th><th>Sana</th><th></th>
+          <th class="col-id">ID</th>
+          <th class="col-name">F.I.SH</th>
+          <th>Telefon</th>
+          <th>Viloyat <span class="col-district">/ Tuman</span></th>
+          <th>Yo'nalish</th>
+          <th class="col-tests">Testlar</th>
+          <th class="col-score">Eng ball</th>
+          <th class="col-date">Sana</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
         {% for u in users %}
         {% set stats = user_stats.get(u.id, {}) %}
         <tr>
-          <td class="text-muted font-mono text-xs">{{ u.id }}</td>
-          <td><div class="fw-700">{{ u.first_name }} {{ u.last_name or '' }}</div></td>
+          <td class="col-id text-muted font-mono text-xs">{{ u.id }}</td>
+          <td class="col-name"><div class="fw-700">{{ u.first_name }} {{ u.last_name or '' }}</div></td>
           <td class="font-mono text-sm">{{ u.phone }}</td>
           <td>
             <div>{{ u.region.name_uz if u.region else '—' }}</div>
-            <div class="text-muted text-xs">{{ u.district.name_uz if u.district else '' }}</div>
+            <div class="text-muted text-xs col-district">{{ u.district.name_uz if u.district else '' }}</div>
           </td>
           <td>
             {% if u.direction %}
@@ -72,20 +91,20 @@
               {{ u.direction.name_uz[:28] }}{% if u.direction.name_uz|length > 28 %}…{% endif %}
             </span>
             {% else %}
-            <span class="badge badge-orange">Belgilanmagan</span>
+            <span class="badge badge-orange">Yo'q</span>
             {% endif %}
           </td>
-          <td>
+          <td class="col-tests">
             <span class="badge {{ 'badge-blue' if stats.test_count > 0 else 'badge-gray' }}">
               {{ stats.test_count or 0 }}
             </span>
           </td>
-          <td>
+          <td class="col-score">
             {% if stats.best_score %}
             <span class="font-mono text-sm text-success">{{ stats.best_score }}</span>
             {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
-          <td class="text-muted text-xs">{{ u.created_at.strftime('%d.%m.%Y') }}</td>
+          <td class="col-date text-muted text-xs">{{ u.created_at.strftime('%d.%m.%Y') }}</td>
           <td>
             <div class="flex gap-2">
               <a href="{{ url_for('user_detail', user_id=u.id) }}" class="btn btn-ghost btn-sm">Ko'rish</a>

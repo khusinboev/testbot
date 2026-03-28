@@ -2,11 +2,25 @@
 {% block title %}Reyting — DTM Admin{% endblock %}
 {% block page_title %}🏆 Reyting{% endblock %}
 
+{% block head %}
+<style>
+  @media (max-width: 768px) {
+    .col-phone-lb, .col-date-lb { display: none; }
+    .col-dir-lb { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Filter vertikal */
+    .lb-filter { flex-direction: column !important; align-items: stretch !important; }
+    .lb-filter .form-control { max-width: 100% !important; }
+    .lb-filter-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+    .lb-filter-actions .btn { flex: 1; justify-content: center; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="card mb-4">
   <div class="card-body" style="padding:16px">
-    <form method="GET" class="flex gap-3 items-center" style="flex-wrap:wrap">
+    <form method="GET" class="flex gap-3 items-center lb-filter" style="flex-wrap:wrap">
       <select name="period" class="form-control" style="max-width:150px">
         <option value="daily" {% if period_filter == 'daily' %}selected{% endif %}>Kunlik</option>
         <option value="weekly" {% if period_filter == 'weekly' %}selected{% endif %}>Haftalik</option>
@@ -20,9 +34,9 @@
         </option>
         {% endfor %}
       </select>
-      <button type="submit" class="btn btn-primary">Filtr</button>
-      {% if direction_filter or period_filter != 'all_time' %}<a href="{{ url_for('leaderboard') }}" class="btn btn-ghost">✕</a>{% endif %}
-      <div style="margin-left:auto">
+      <div class="lb-filter-actions">
+        <button type="submit" class="btn btn-primary">Filtr</button>
+        {% if direction_filter or period_filter != 'all_time' %}<a href="{{ url_for('leaderboard') }}" class="btn btn-ghost">✕</a>{% endif %}
         <a href="{{ url_for('export_scores') }}" class="btn btn-success btn-sm">📥 Excel</a>
       </div>
     </form>
@@ -39,18 +53,22 @@
     <table>
       <thead>
         <tr>
-          <th>O'rin</th><th>F.I.SH</th><th>Telefon</th>
-          <th>Yo'nalish</th><th>Ball</th><th>Sana</th>
+          <th>O'rin</th>
+          <th>F.I.SH</th>
+          <th class="col-phone-lb">Telefon</th>
+          <th class="col-dir-lb">Yo'nalish</th>
+          <th>Ball</th>
+          <th class="col-date-lb">Sana</th>
         </tr>
       </thead>
       <tbody>
         {% for entry in entries %}
         <tr>
-          <td>
+          <td style="white-space:nowrap">
             {% if entry.rank == 1 %}🥇
             {% elif entry.rank == 2 %}🥈
             {% elif entry.rank == 3 %}🥉
-            {% else %}{{ entry.rank }}{% endif %}
+            {% else %}<span class="text-muted">{{ entry.rank }}</span>{% endif %}
           </td>
           <td class="fw-700">
             {% if entry.user %}
@@ -60,8 +78,8 @@
             </a>
             {% else %}—{% endif %}
           </td>
-          <td class="font-mono text-sm text-muted">{{ entry.user.phone if entry.user else '—' }}</td>
-          <td class="text-sm text-muted">
+          <td class="col-phone-lb font-mono text-sm text-muted">{{ entry.user.phone if entry.user else '—' }}</td>
+          <td class="col-dir-lb text-sm text-muted">
             {% if entry.direction %}
             <span title="{{ entry.direction.name_uz }}">
               {{ entry.direction.name_uz[:25] }}{% if entry.direction.name_uz|length > 25 %}…{% endif %}
@@ -71,7 +89,7 @@
           <td>
             <span class="badge badge-blue font-mono" style="font-size:13px">{{ entry.total_score }}</span>
           </td>
-          <td class="text-muted text-xs">{{ entry.timestamp.strftime('%d.%m.%Y %H:%M') }}</td>
+          <td class="col-date-lb text-muted text-xs">{{ entry.timestamp.strftime('%d.%m.%Y %H:%M') }}</td>
         </tr>
         {% else %}
         <tr>

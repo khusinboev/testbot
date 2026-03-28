@@ -2,6 +2,16 @@
 {% block title %}Kanallar — DTM Admin{% endblock %}
 {% block page_title %}📢 Majburiy kanallar{% endblock %}
 
+{% block head %}
+<style>
+  @media (max-width: 768px) {
+    .col-ch-link, .col-ch-date { display: none; }
+    td .flex.gap-2 { flex-direction: column; gap: 4px; }
+    td .flex.gap-2 .btn { width: 100%; justify-content: center; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <!-- Qo'shish tugmasi -->
@@ -20,9 +30,9 @@
         <tr>
           <th>ID / Username</th>
           <th>Nomi</th>
-          <th>Havola (inline tugma)</th>
+          <th class="col-ch-link">Havola (inline tugma)</th>
           <th>Holat</th>
-          <th>Sana</th>
+          <th class="col-ch-date">Sana</th>
           <th></th>
         </tr>
       </thead>
@@ -31,7 +41,7 @@
         <tr>
           <td class="font-mono text-sm">{{ ch.channel_id }}</td>
           <td class="fw-700">{{ ch.channel_name }}</td>
-          <td>
+          <td class="col-ch-link">
             {% if ch.invite_link %}
             <a href="{{ ch.invite_link }}" target="_blank"
                class="text-accent text-sm" style="word-break:break-all">
@@ -48,7 +58,7 @@
             <span class="badge badge-gray">⏸ To'xtatilgan</span>
             {% endif %}
           </td>
-          <td class="text-muted text-xs">{{ ch.created_at.strftime('%d.%m.%Y') }}</td>
+          <td class="col-ch-date text-muted text-xs">{{ ch.created_at.strftime('%d.%m.%Y') }}</td>
           <td>
             <div class="flex gap-2">
               <button class="btn btn-ghost btn-sm"

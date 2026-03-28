@@ -40,6 +40,18 @@
   .user-name { font-weight: 600; font-size: 13px; }
   .user-phone { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
   .user-score { margin-left: auto; }
+
+  @media (max-width: 768px) {
+    .col-dir-code, .col-dir-subj1, .col-dir-subj2,
+    .col-dir-tests, .col-dir-avg, .col-dir-best { display: none; }
+    /* Sort buttons + filter stack vertically */
+    .dir-filter-form { flex-direction: column !important; align-items: stretch !important; }
+    .dir-filter-form .form-control { max-width: 100% !important; }
+    .dir-sort-wrap { margin-left: 0 !important; display: flex; gap: 6px; flex-wrap: wrap; }
+    .dir-sort-wrap .sort-btn { flex: 1; text-align: center; }
+    .dir-filter-btns { display: flex; gap: 8px; }
+    .dir-filter-btns .btn { flex: 1; justify-content: center; }
+  }
 </style>
 {% endblock %}
 
@@ -67,14 +79,16 @@
 <!-- Filter va saralash -->
 <div class="card mb-4">
   <div class="card-body" style="padding:16px">
-    <form method="GET" class="flex gap-3 items-center" style="flex-wrap:wrap">
-      <input type="text" name="search" class="form-control" style="max-width:280px"
-             placeholder="🔍 Yo'nalish nomi yoki kodi..." value="{{ search }}">
-      <button type="submit" class="btn btn-primary">Qidirish</button>
-      {% if search %}
-      <a href="{{ url_for('directions') }}" class="btn btn-ghost">✕</a>
-      {% endif %}
-      <div class="flex gap-2" style="margin-left:auto">
+    <form method="GET" class="flex gap-3 items-center dir-filter-form" style="flex-wrap:wrap">
+      <div class="dir-filter-btns">
+        <input type="text" name="search" class="form-control" style="max-width:280px;flex:1;min-width:160px"
+               placeholder="🔍 Yo'nalish nomi yoki kodi..." value="{{ search }}">
+        <button type="submit" class="btn btn-primary">Qidirish</button>
+        {% if search %}
+        <a href="{{ url_for('directions') }}" class="btn btn-ghost">✕</a>
+        {% endif %}
+      </div>
+      <div class="flex gap-2 dir-sort-wrap" style="margin-left:auto">
         <a href="?sort=users&search={{ search }}"
            class="sort-btn {% if sort_by == 'users' %}active{% endif %}">
           👥 Foydalanuvchi
@@ -98,14 +112,14 @@
     <table>
       <thead>
         <tr>
-          <th>Kod</th>
-          <th style="min-width:280px">Yo'nalish nomi</th>
-          <th>1-fan</th>
-          <th>2-fan</th>
+          <th class="col-dir-code">Kod</th>
+          <th style="min-width:200px">Yo'nalish nomi</th>
+          <th class="col-dir-subj1">1-fan</th>
+          <th class="col-dir-subj2">2-fan</th>
           <th>👥 Userlar</th>
-          <th>🧪 Testlar</th>
-          <th>Ø Ball</th>
-          <th>🏆 Best</th>
+          <th class="col-dir-tests">🧪 Testlar</th>
+          <th class="col-dir-avg">Ø Ball</th>
+          <th class="col-dir-best">🏆 Best</th>
           <th></th>
         </tr>
       </thead>
@@ -114,7 +128,7 @@
         {% for d in directions %}
         {% set st = dir_stats.get(d.id, {}) %}
         <tr>
-          <td class="font-mono text-xs text-muted">{{ d.id }}</td>
+          <td class="col-dir-code font-mono text-xs text-muted">{{ d.id }}</td>
           <td>
             <div class="fw-700" style="font-size:13px">
               {{ d.name_uz[:50] }}{% if d.name_uz|length > 50 %}…{% endif %}
@@ -125,10 +139,10 @@
               </div>
             </div>
           </td>
-          <td class="text-xs text-muted">
+          <td class="col-dir-subj1 text-xs text-muted">
             {{ subj_map.get(d.subject1_id, '—') }}
           </td>
-          <td class="text-xs text-muted">
+          <td class="col-dir-subj2 text-xs text-muted">
             {{ subj_map.get(d.subject2_id, '—') }}
           </td>
           <td>
@@ -138,8 +152,8 @@
             <span class="text-muted text-xs">0</span>
             {% endif %}
           </td>
-          <td class="font-mono text-sm">{{ st.score_count or '—' }}</td>
-          <td>
+          <td class="col-dir-tests font-mono text-sm">{{ st.score_count or '—' }}</td>
+          <td class="col-dir-avg">
             {% if st.avg_score %}
             <span class="font-mono text-sm
               {% if st.avg_score >= 150 %}text-success
@@ -151,7 +165,7 @@
             <span class="text-muted">—</span>
             {% endif %}
           </td>
-          <td>
+          <td class="col-dir-best">
             {% if st.best_score %}
             <span class="font-mono text-sm text-success fw-700">{{ st.best_score }}</span>
             {% else %}

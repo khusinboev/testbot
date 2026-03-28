@@ -294,9 +294,11 @@ def delete_user(user_id):
     db = get_db()
     try:
         from database.models import (
-            Leaderboard, Score, User, UserAnswer, UserTestParticipation,
+            Leaderboard, ReferralInvite, ReferralLink,
+            Score, User, UserAnswer, UserTestParticipation,
         )
 
+        # 1. Participation va unga bog'liq ma'lumotlar
         participations    = db.query(UserTestParticipation).filter(
             UserTestParticipation.user_id == user_id
         ).all()
@@ -310,12 +312,28 @@ def delete_user(user_id):
                 UserAnswer.participation_id.in_(participation_ids)
             ).delete(synchronize_session=False)
 
+        # 2. To'g'ridan-to'g'ri user ga bog'liq ma'lumotlar
         db.query(Score).filter(Score.user_id == user_id).delete(synchronize_session=False)
         db.query(Leaderboard).filter(Leaderboard.user_id == user_id).delete(synchronize_session=False)
         db.query(UserAnswer).filter(UserAnswer.user_id == user_id).delete(synchronize_session=False)
         db.query(UserTestParticipation).filter(
             UserTestParticipation.user_id == user_id
         ).delete(synchronize_session=False)
+
+        # 3. Referal ma'lumotlar (avval invites, keyin link — FK tartib)
+        link = db.query(ReferralLink).filter(ReferralLink.user_id == user_id).first()
+        if link:
+            db.query(ReferralInvite).filter(
+                ReferralInvite.referral_link_id == link.id
+            ).delete(synchronize_session=False)
+            db.query(ReferralLink).filter(ReferralLink.id == link.id).delete(synchronize_session=False)
+
+        # Bu user boshqa havola orqali kelganmi — invite yozuvini ham tozala
+        db.query(ReferralInvite).filter(
+            ReferralInvite.invited_user_id == user_id
+        ).delete(synchronize_session=False)
+
+        # 4. Foydalanuvchini o'chirish
         db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
 
         db.commit()

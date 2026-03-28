@@ -2,6 +2,14 @@
 {% block title %}{{ user.first_name }} {{ user.last_name or '' }} — DTM Admin{% endblock %}
 {% block page_title %}👤 Foydalanuvchi #{{ user.id }}{% endblock %}
 
+{% block head %}
+<style>
+  @media (max-width: 480px) {
+    .col-sc-pct, .col-sc-attempted { display: none; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="flex gap-3 mb-4">
@@ -113,8 +121,8 @@
             <tr>
               <th>Ball</th>
               <th>To'g'ri</th>
-              <th>Yechildi</th>
-              <th>Foiz</th>
+              <th class="col-sc-attempted">Yechildi</th>
+              <th class="col-sc-pct">Foiz</th>
               <th>Holat</th>
               <th>Sana</th>
             </tr>
@@ -128,10 +136,10 @@
                 </span>
               </td>
               <td class="text-sm">{{ s.correct_count }}/90</td>
-              <td class="text-sm text-muted">
+              <td class="col-sc-attempted text-sm text-muted">
                 {{ s.attempted_count if s.attempted_count else '—' }}/90
               </td>
-              <td>
+              <td class="col-sc-pct">
                 {% set pct = (s.correct_count / 90 * 100) %}
                 <span class="text-sm {% if pct >= 70 %}text-success{% elif pct >= 50 %}text-accent{% else %}text-danger{% endif %}">
                   {{ pct|round(1) }}%

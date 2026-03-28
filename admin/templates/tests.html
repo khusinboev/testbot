@@ -2,6 +2,17 @@
 {% block title %}Test sessiyalar — DTM Admin{% endblock %}
 {% block page_title %}🧪 Test sessiyalar{% endblock %}
 
+{% block head %}
+<style>
+  @media (max-width: 768px) {
+    .col-ts-id, .col-ts-dur, .col-ts-avg { display: none; }
+  }
+  @media (max-width: 480px) {
+    .col-ts-done { display: none; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="card">
@@ -9,13 +20,13 @@
     <table>
       <thead>
         <tr>
-          <th>ID</th>
+          <th class="col-ts-id">ID</th>
           <th>Sana</th>
           <th>Holat</th>
           <th>Ishtirokchilar</th>
-          <th>Yakunlagan</th>
-          <th>Ø Ball</th>
-          <th>Davomiyligi</th>
+          <th class="col-ts-done">Yakunlagan</th>
+          <th class="col-ts-avg">Ø Ball</th>
+          <th class="col-ts-dur">Davomiylik</th>
           <th></th>
         </tr>
       </thead>
@@ -23,7 +34,7 @@
         {% for ts in test_sessions %}
         {% set st = session_stats.get(ts.id, {}) %}
         <tr>
-          <td class="font-mono text-xs text-muted">{{ ts.id }}</td>
+          <td class="col-ts-id font-mono text-xs text-muted">{{ ts.id }}</td>
           <td>{{ ts.exam_date.strftime('%d.%m.%Y %H:%M') }}</td>
           <td>
             {% if ts.status == 'active' %}
@@ -35,13 +46,13 @@
             {% endif %}
           </td>
           <td><span class="badge badge-blue">{{ st.participants or 0 }}</span></td>
-          <td>
+          <td class="col-ts-done">
             {% if st.participants %}
             <span class="badge badge-green">{{ st.completed or 0 }}</span>
             {% else %}—{% endif %}
           </td>
-          <td class="font-mono">{{ st.avg_score or '—' }}</td>
-          <td class="text-muted text-sm">{{ ts.duration_minutes }} min</td>
+          <td class="col-ts-avg font-mono">{{ st.avg_score or '—' }}</td>
+          <td class="col-ts-dur text-muted text-sm">{{ ts.duration_minutes }} min</td>
           <td>
             <a href="{{ url_for('test_detail', session_id=ts.id) }}" class="btn btn-ghost btn-sm">
               Ko'rish →
