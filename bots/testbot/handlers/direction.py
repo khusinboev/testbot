@@ -52,6 +52,9 @@ async def apply_direction_change(
             await source.answer("❌ Yo'nalish topilmadi!")
         return
 
+    # commit() barcha session ob'ektlarini expire qiladi — nomni oldindan saqlaymiz
+    direction_name = direction.name_uz
+
     tg_id   = source.from_user.id
     user_db = db.query(User).filter(User.telegram_id == tg_id).first()
     if user_db:
@@ -64,7 +67,7 @@ async def apply_direction_change(
     user           = get_user_by_telegram_id(tg_id)
 
     await msg.answer(
-        f"✅ Yo'nalish: <b>{direction.name_uz}</b>", parse_mode="HTML"
+        f"✅ Yo'nalish: <b>{direction_name}</b>", parse_mode="HTML"
     )
 
     if current_state in (TestSessionStates.waiting_for_direction,

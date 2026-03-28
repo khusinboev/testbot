@@ -108,6 +108,7 @@ async def handle_test_resume(callback: types.CallbackQuery, state: FSMContext, b
     user = get_user_by_telegram_id(callback.from_user.id)
     if not user:
         await callback.answer("❌ Foydalanuvchi topilmadi!", show_alert=True)
+        await state.clear()
         return
 
     active = TestService.get_active_participation(user.id)
@@ -172,6 +173,7 @@ async def handle_force_new_test(callback: types.CallbackQuery, state: FSMContext
     user = get_user_by_telegram_id(callback.from_user.id)
     if not user:
         await callback.answer("❌ Xato!", show_alert=True)
+        await state.clear()
         return
 
     db = Session()
@@ -278,6 +280,7 @@ async def confirm_test_start(callback: types.CallbackQuery, state: FSMContext, b
         user = await asyncio.to_thread(get_user_by_telegram_id, uid)
         if not user:
             await callback.answer("❌ Foydalanuvchi topilmadi!", show_alert=True)
+            await state.clear()
             return
 
         def _check_active_and_stale(u_id):

@@ -190,31 +190,31 @@ async def process_confirmation(callback: types.CallbackQuery, state: FSMContext)
             db.add(new_user)
             db.commit()
             new_user_id = new_user.id
-
-            user = db.query(User).options(
-                joinedload(User.region),
-                joinedload(User.district),
-                joinedload(User.direction),
-            ).filter(User.telegram_id == callback.from_user.id).first()
-
-            # Referal qayd etish
-            pending_ref = data.get("pending_ref_code")
-            if pending_ref:
-                ok = record_referral_invite(pending_ref, new_user_id)
-                if ok:
-                    import logging
-                    logging.getLogger(__name__).info(
-                        "Referal qayd qilindi: code=%s → user_id=%d", pending_ref, new_user_id
-                    )
-
-            await callback.answer("✅ Ro'yxatdan o'tildi!", show_alert=True)
-            await safe_delete(callback.message)
-            await state.clear()
-
-            await show_main_menu(callback.message, state, user)
-
         except Exception as e:
             db.rollback()
             await callback.answer(fmt_error(e), show_alert=True)
+            return
         finally:
             db.close()
+
+        # Referal qayd etish (o'z sessiyasida — scoped_session muammosidan saqlanish uchun)
+        pending_ref = data.get("pending_ref_code")
+        if pending_ref:
+            import logging
+            ok = record_referral_invite(pending_ref, new_user_id)
+            if ok:
+                logging.getLogger(__name__).info(
+                    "Referal qayd qilindi: code=%s → user_id=%d", pending_ref, new_user_id
+                )
+
+        # Yangi sessiyada user ni to'liq yuklash (expire muammosidan saqlanish)
+        user = get_user_by_telegram_id(callback.from_user.id)
+
+        await callback.answer("✅ Ro'yxatdan o'tildi!", show_alert=True)
+        await safe_delete(callback.message)
+        await state.clear()
+
+        if user:
+            await show_main_menu(callback.message, state, user)
+        else:
+            await callback.message.answer("Boshlash uchun /start bosing.")
