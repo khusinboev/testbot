@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional
 from database.db import Session
 from database.models import ReferralInvite, ReferralLink, ReferralSettings, User
 from sqlalchemy import func
+from sqlalchemy import update as _sql_update
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +207,12 @@ def record_referral_invite(referral_code: str, invited_db_user_id: int) -> bool:
             referral_link_id=link.id,
             invited_user_id=invited_db_user_id,
         ))
-        link.invited_count = (link.invited_count or 0) + 1
+        # Atomic increment — race condition dan himoya
+        db.execute(
+            _sql_update(ReferralLink)
+            .where(ReferralLink.id == link.id)
+            .values(invited_count=func.coalesce(ReferralLink.invited_count, 0) + 1)
+        )
         db.commit()
         return True
 

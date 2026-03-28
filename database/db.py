@@ -21,8 +21,8 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 
 _engine_kwargs: dict = {
     "pool_pre_ping": True,
-    "pool_size":     10,
-    "max_overflow":  20,
+    "pool_size":     config.DB_POOL_SIZE,
+    "max_overflow":  config.DB_MAX_OVERFLOW,
     "pool_timeout":  30,
     "pool_recycle":  1800,
 }

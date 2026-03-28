@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import random
+import threading
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -45,38 +46,36 @@ class TestService:
     def get_or_create_test_session() -> TestSession:
         """Bugungi aktiv TestSession ni oladi, yo'q bo'lsa yaratadi."""
         db = Session()
-        today = datetime.utcnow().date()
-
-        test_session = db.query(TestSession).filter(
-            func.date(TestSession.exam_date) == today,
-            TestSession.status == "active",
-        ).first()
-
-        if not test_session:
-            admin = db.query(Admin).first()
-            if not admin:
-                admin = Admin(telegram_id=0, role="super_admin")
-                db.add(admin)
-                db.flush()
-
-            test_session = TestSession(
-                admin_id=admin.id,
-                exam_date=datetime.utcnow(),
-                start_time=datetime.utcnow(),
-                duration_minutes=config.TEST_DURATION_MINUTES,
-                status="active",
-            )
-            db.add(test_session)
-            db.commit()
-
-        session_id = test_session.id
-        db.close()
-
-        db2 = Session()
         try:
-            return db2.query(TestSession).filter(TestSession.id == session_id).first()
+            today = datetime.utcnow().date()
+
+            test_session = db.query(TestSession).filter(
+                func.date(TestSession.exam_date) == today,
+                TestSession.status == "active",
+            ).first()
+
+            if not test_session:
+                admin = db.query(Admin).first()
+                if not admin:
+                    admin = Admin(telegram_id=0, role="super_admin")
+                    db.add(admin)
+                    db.flush()
+
+                test_session = TestSession(
+                    admin_id=admin.id,
+                    exam_date=datetime.utcnow(),
+                    start_time=datetime.utcnow(),
+                    duration_minutes=config.TEST_DURATION_MINUTES,
+                    status="active",
+                )
+                db.add(test_session)
+                db.commit()
+
+            db.refresh(test_session)
+            db.expunge(test_session)
+            return test_session
         finally:
-            db2.close()
+            db.close()
 
     # ──────────────────────────────────────────────────────────────────────────
     # PARTICIPATION
@@ -114,21 +113,14 @@ class TestService:
             )
             db.add(p)
             db.commit()
-            p_id = p.id
-
+            db.refresh(p)
+            db.expunge(p)
+            return p
         except Exception:
             db.rollback()
             raise
         finally:
             db.close()
-
-        db2 = Session()
-        try:
-            return db2.query(UserTestParticipation).filter(
-                UserTestParticipation.id == p_id
-            ).first()
-        finally:
-            db2.close()
 
     @staticmethod
     def get_active_participation(user_id: int) -> Optional[UserTestParticipation]:
@@ -144,17 +136,10 @@ class TestService:
 
             if p is None:
                 return None
-            p_id = p.id
+            db.expunge(p)
+            return p
         finally:
             db.close()
-
-        db2 = Session()
-        try:
-            return db2.query(UserTestParticipation).filter(
-                UserTestParticipation.id == p_id
-            ).first()
-        finally:
-            db2.close()
 
     @staticmethod
     def save_snapshot(participation_id: int, questions: list,
@@ -248,13 +233,36 @@ class TestService:
         """
         Berilgan fandan `count` ta savol oladi, random aralashtirib,
         variantlar tartibini ham random qiladi (to'g'ri javob kuzatiladi).
+
+        Samarali strategiya (50k+ foydalanuvchi):
+          1. Faqat ID larni yukla (juda tez)
+          2. Pythonda random sampling
+          3. Tanlangan IDlar bo'yicha faqat kerakli savollarni yukla
         """
+        # 1. Faqat IDlarni yukla
         db = Session()
         try:
-            rows = db.query(Question).filter(Question.subject_id == subject_id).all()
+            all_ids = [
+                r[0] for r in
+                db.query(Question.id).filter(Question.subject_id == subject_id).all()
+            ]
         finally:
             db.close()
 
+        if not all_ids:
+            return []
+
+        # 2. Random sampling — butun ro'yxatni aralashtirishga hojat yo'q
+        sampled_ids = random.sample(all_ids, min(count, len(all_ids)))
+
+        # 3. Faqat tanlangan savollarni yukla
+        db = Session()
+        try:
+            rows = db.query(Question).filter(Question.id.in_(sampled_ids)).all()
+        finally:
+            db.close()
+
+        # Tartibni ham random qil (IN clause tartibni kafolat qilmaydi)
         random.shuffle(rows)
         result = []
 
@@ -296,10 +304,15 @@ class TestService:
     @staticmethod
     def save_answer(participation_id: int, user_id: int,
                     test_session_id: int, question_id: int,
-                    selected_answer: str) -> bool:
+                    selected_answer: str,
+                    correct_answer: Optional[str] = None) -> bool:
         """
         Javobni saqlaydi. Bir xil savol uchun takroriy yozuv bo'lmaydi
         (UniqueConstraint himoyasi + oldindan tekshiruv).
+
+        correct_answer — snapshot dagi ararishtirilgan to'g'ri javob harfi.
+        Berilsa DB ga murojaat qilinmaydi (tez + to'g'ri).
+        Berilmasa — DB dan original correct_answer olinadi (fallback).
         """
         db = Session()
         try:
@@ -310,11 +323,14 @@ class TestService:
             if existing:
                 return True
 
-            question = db.query(Question).filter(Question.id == question_id).first()
-            if not question:
-                return False
+            if correct_answer is not None:
+                is_correct = bool(selected_answer and selected_answer == correct_answer)
+            else:
+                question = db.query(Question).filter(Question.id == question_id).first()
+                if not question:
+                    return False
+                is_correct = bool(selected_answer and selected_answer == question.correct_answer)
 
-            is_correct = bool(selected_answer and selected_answer == question.correct_answer)
             db.add(UserAnswer(
                 user_id=user_id,
                 test_session_id=test_session_id,
@@ -362,9 +378,19 @@ class TestService:
                 UserAnswer.is_correct.is_(True),
             ).all()
 
+            if not correct_answers:
+                return 0.0
+
+            # Barcha savollarni BITTA so'rovda yukla (N+1 o'rniga 1 so'rov)
+            q_ids = [ans.question_id for ans in correct_answers]
+            questions_map = {
+                q.id: q
+                for q in db.query(Question).filter(Question.id.in_(q_ids)).all()
+            }
+
             total = 0.0
             for ans in correct_answers:
-                q = db.query(Question).filter(Question.id == ans.question_id).first()
+                q = questions_map.get(ans.question_id)
                 if not q:
                     continue
                 if q.subject_id in config.MANDATORY_SUBJECT_IDS:
@@ -479,11 +505,13 @@ class TestService:
         finally:
             db.close()
 
-        # 5. Leaderboard rebuild (alohida session)
-        try:
-            TestService._rebuild_leaderboard_for_direction(ts_id, direction_id)
-        except Exception as e:
-            logger.error("Leaderboard rebuild xato: %s", e)
+        # 5. Leaderboard rebuild — fon threadida (asosiy javobni bloklamaydi)
+        threading.Thread(
+            target=TestService._rebuild_leaderboard_for_direction,
+            args=(ts_id, direction_id),
+            daemon=True,
+            name=f"leaderboard-{direction_id}",
+        ).start()
 
         pct = round(correct_count / TOTAL_TEST_QUESTIONS * 100, 1)
         return {

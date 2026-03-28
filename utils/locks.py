@@ -11,21 +11,29 @@ Foydalanish:
             return
         async with user_lock(cb.from_user.id):
             # handler logikasi
+
+50k foydalanuvchi uchun yaxshilashlar:
+  - WeakValueDictionary: foydalanilmagan locklar avtomatik GC qilinadi
+  - _last_action: 100k dan oshsa eski yozuvlar tozalanadi
 """
 
 import asyncio
+import time
+from weakref import WeakValueDictionary
 from typing import Dict
 
-# Har bir user uchun alohida lock
-_user_locks: Dict[int, asyncio.Lock] = {}
+# WeakValueDictionary: lock ishlatilmayotganda GC avtomatik o'chiradi
+_user_locks: WeakValueDictionary = WeakValueDictionary()
 # Hozir bajarilayotgan userlar
 _processing: set = set()
 
 
 def _get_lock(user_id: int) -> asyncio.Lock:
-    if user_id not in _user_locks:
-        _user_locks[user_id] = asyncio.Lock()
-    return _user_locks[user_id]
+    lock = _user_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _user_locks[user_id] = lock
+    return lock
 
 
 def is_processing(user_id: int) -> bool:
@@ -56,9 +64,16 @@ def user_lock(user_id: int) -> UserLockContext:
 
 # ─── Throttle (bitta amal uchun minimal vaqt oralig'i) ──────────────────────
 
-import time
-
 _last_action: Dict[int, float] = {}
+_MAX_THROTTLE_SIZE = 100_000  # 50k user + zaxira
+
+
+def _cleanup_throttle(now: float) -> None:
+    """1 soatdan eski yozuvlarni o'chiradi."""
+    cutoff = now - 3600.0
+    stale = [k for k, v in _last_action.items() if v < cutoff]
+    for k in stale:
+        del _last_action[k]
 
 
 def throttle_check(user_id: int, min_interval: float = 0.5) -> bool:
@@ -71,4 +86,6 @@ def throttle_check(user_id: int, min_interval: float = 0.5) -> bool:
     if now - last < min_interval:
         return False
     _last_action[user_id] = now
+    if len(_last_action) > _MAX_THROTTLE_SIZE:
+        _cleanup_throttle(now)
     return True

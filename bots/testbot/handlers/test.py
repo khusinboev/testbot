@@ -8,6 +8,7 @@ Test oqimi (flow):
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import traceback
 from datetime import datetime
@@ -274,19 +275,31 @@ async def confirm_test_start(callback: types.CallbackQuery, state: FSMContext, b
         return
 
     async with user_lock(uid):
-        user = get_user_by_telegram_id(uid)
+        user = await asyncio.to_thread(get_user_by_telegram_id, uid)
         if not user:
             await callback.answer("❌ Foydalanuvchi topilmadi!", show_alert=True)
             return
 
-        db  = Session()
-        now = datetime.utcnow()
-        still_active = db.query(UserTestParticipation).filter(
-            UserTestParticipation.user_id    == user.id,
-            UserTestParticipation.status     == "active",
-            UserTestParticipation.deadline_at > now,
-        ).first()
-        db.close()
+        def _check_active_and_stale(u_id):
+            db = Session()
+            try:
+                now = datetime.utcnow()
+                active = db.query(UserTestParticipation).filter(
+                    UserTestParticipation.user_id    == u_id,
+                    UserTestParticipation.status     == "active",
+                    UserTestParticipation.deadline_at > now,
+                ).first()
+                stale = [
+                    p.id for p in db.query(UserTestParticipation).filter(
+                        UserTestParticipation.user_id == u_id,
+                        UserTestParticipation.status  == "active",
+                    ).all()
+                ]
+                return bool(active), stale
+            finally:
+                db.close()
+
+        still_active, stale_ids = await asyncio.to_thread(_check_active_and_stale, user.id)
 
         if still_active:
             await callback.answer(
@@ -294,19 +307,13 @@ async def confirm_test_start(callback: types.CallbackQuery, state: FSMContext, b
             )
             return
 
-        db2 = Session()
-        stale_ids = [
-            p.id for p in db2.query(UserTestParticipation).filter(
-                UserTestParticipation.user_id == user.id,
-                UserTestParticipation.status  == "active",
-            ).all()
-        ]
-        db2.close()
         for stale_id in stale_ids:
-            TestService.complete_test(stale_id)
+            await asyncio.to_thread(TestService.complete_test, stale_id)
 
         try:
-            participation = TestService.create_participation(user.id, user.direction_id)
+            participation = await asyncio.to_thread(
+                TestService.create_participation, user.id, user.direction_id
+            )
             if not participation:
                 await callback.answer(
                     "❌ Kunlik test limiti tugagan! Ertaga qayta urinib ko'ring.",
@@ -314,7 +321,9 @@ async def confirm_test_start(callback: types.CallbackQuery, state: FSMContext, b
                 )
                 return
 
-            questions = TestService.get_test_questions(user.direction_id)
+            questions = await asyncio.to_thread(
+                TestService.get_test_questions, user.direction_id
+            )
             if not questions:
                 await callback.answer("❌ Savollar topilmadi!", show_alert=True)
                 return
@@ -327,7 +336,9 @@ async def confirm_test_start(callback: types.CallbackQuery, state: FSMContext, b
                 answers={},
                 deadline_ts=participation.deadline_at.timestamp(),
             )
-            TestService.save_snapshot(participation.id, questions, 0, {})
+            await asyncio.to_thread(
+                TestService.save_snapshot, participation.id, questions, 0, {}
+            )
 
             await safe_delete(callback.message)
             await callback.message.answer(
@@ -379,7 +390,7 @@ async def handle_test_answer(callback: types.CallbackQuery, state: FSMContext):
 
         # Vaqt tugadimi?
         if deadline_ts and datetime.utcnow().timestamp() > deadline_ts:
-            score_info = TestService.complete_test(p_id)
+            score_info = await asyncio.to_thread(TestService.complete_test, p_id)
             await safe_delete(callback.message)
             await state.clear()
             text = (
@@ -396,14 +407,13 @@ async def handle_test_answer(callback: types.CallbackQuery, state: FSMContext):
 
         if answer != "skip":
             answers[str(current_index)] = answer
-            user = get_user_by_telegram_id(uid)
+            user = await asyncio.to_thread(get_user_by_telegram_id, uid)
             if user:
-                TestService.save_answer(
-                    participation_id=p_id,
-                    user_id=user.id,
-                    test_session_id=ts_id,
-                    question_id=current_q["id"],
-                    selected_answer=answer,
+                await asyncio.to_thread(
+                    TestService.save_answer,
+                    p_id, user.id, ts_id,
+                    current_q["id"], answer,
+                    current_q.get("correct_answer"),
                 )
         else:
             answers[str(current_index)] = None
@@ -411,10 +421,12 @@ async def handle_test_answer(callback: types.CallbackQuery, state: FSMContext):
         current_index += 1
 
         if current_index % 5 == 0 or current_index >= len(questions):
-            TestService.save_snapshot(p_id, questions, current_index, answers)
+            await asyncio.to_thread(
+                TestService.save_snapshot, p_id, questions, current_index, answers
+            )
 
         if current_index >= len(questions):
-            score_info = TestService.complete_test(p_id)
+            score_info = await asyncio.to_thread(TestService.complete_test, p_id)
             await safe_delete(callback.message)
             await state.clear()
             text = (
@@ -455,7 +467,7 @@ async def finish_test_early(callback: types.CallbackQuery, state: FSMContext):
                                           reply_markup=await get_main_menu_keyboard())
             return
 
-        score_info = TestService.complete_test(p_id)
+        score_info = await asyncio.to_thread(TestService.complete_test, p_id)
         await safe_delete(callback.message)
         await state.clear()
         text = (

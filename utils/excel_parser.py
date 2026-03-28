@@ -22,11 +22,27 @@ except ImportError:
 # Loyiha ildizi — utils/ ning parenti
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# BUGFIX: oldingi versiyada "../data/..." noto'g'ri path bor edi
-EXCEL_FILES = [
-    os.path.join(ROOT_DIR, "data", "Fanlar_majmuasi_2025-2026.xlsx"),   # tavsiya
-    os.path.join(ROOT_DIR, "Fanlar_majmuasi_2025-2026.xlsx"),            # ildizda
-]
+
+def _build_excel_files() -> list:
+    """
+    Qidirish tartibi:
+      1. EXCEL_FILE_PATH muhit o'zgaruvchisi (agar berilgan bo'lsa)
+      2. data/Fanlar_majmuasi_2025-2026.xlsx  (tavsiya etilgan)
+      3. Fanlar_majmuasi_2025-2026.xlsx       (loyiha ildizida)
+    """
+    import config
+    paths = []
+    if config.EXCEL_FILE_PATH:
+        p = config.EXCEL_FILE_PATH
+        if not os.path.isabs(p):
+            p = os.path.join(ROOT_DIR, p)
+        paths.append(p)
+    paths.append(os.path.join(ROOT_DIR, "data", "Fanlar_majmuasi_2025-2026.xlsx"))
+    paths.append(os.path.join(ROOT_DIR, "Fanlar_majmuasi_2025-2026.xlsx"))
+    return paths
+
+
+EXCEL_FILES = _build_excel_files()
 
 SUBJECT_MAP = {
     "matematika": 1,

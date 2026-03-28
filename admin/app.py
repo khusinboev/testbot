@@ -204,18 +204,28 @@ def users():
             .all()
         )
 
+        # Bitta GROUP BY so'rov — 40 ta alohida so'rov o'rniga
+        user_ids = [u.id for u in user_list]
+        stats_rows = (
+            db.query(
+                Score.user_id,
+                func.count(Score.id).label("test_count"),
+                func.max(Score.score).label("best_score"),
+            )
+            .filter(Score.user_id.in_(user_ids))
+            .group_by(Score.user_id)
+            .all()
+        )
         user_stats = {
-            u.id: {
-                "test_count": db.query(func.count(Score.id)).filter(
-                    Score.user_id == u.id
-                ).scalar() or 0,
-                "best_score": round(float(best), 1)
-                    if (best := db.query(func.max(Score.score)).filter(
-                        Score.user_id == u.id
-                    ).scalar()) else 0,
+            row.user_id: {
+                "test_count": row.test_count,
+                "best_score": round(float(row.best_score), 1) if row.best_score else 0,
             }
-            for u in user_list
+            for row in stats_rows
         }
+        for u in user_list:
+            if u.id not in user_stats:
+                user_stats[u.id] = {"test_count": 0, "best_score": 0}
 
         regions     = db.query(Region).all()
         total_pages = (total + per_page - 1) // per_page
