@@ -43,11 +43,10 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot):
     if ref_code and ref_code.startswith("ref_"):
         await state.update_data(pending_ref_code=ref_code)
 
-    if not await subscription_gate(bot, message.from_user.id, message):
-        return
-
     user = get_user_by_telegram_id(message.from_user.id)
     if user:
+        if not await subscription_gate(bot, message.from_user.id, message):
+            return
         if not await referral_gate(bot, message.from_user.id, message):
             return
         await show_main_menu(message, state, user)
@@ -217,6 +216,9 @@ async def process_confirmation(callback: types.CallbackQuery, state: FSMContext,
             await callback.answer("✅ Ro'yxatdan o'tildi!", show_alert=True)
             await safe_delete(callback.message)
             await state.clear()
+
+            if not await subscription_gate(bot, callback.from_user.id, callback.message):
+                return
 
             if not await referral_gate(bot, callback.from_user.id, callback.message):
                 return
